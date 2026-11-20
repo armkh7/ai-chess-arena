@@ -26,8 +26,10 @@ class Termination(StrEnum):
     FIFTY_MOVES = "fifty_moves"
     THREEFOLD_REPETITION = "threefold_repetition"
     # Arena endings
-    MOVE_LIMIT = "move_limit"  # Phase 2 will adjudicate these with Stockfish
+    MOVE_LIMIT = "move_limit"  # move limit reached, final position roughly equal: draw
+    ADJUDICATION = "adjudication"  # move limit reached, Stockfish saw a clear winner
     FORFEIT_ILLEGAL_MOVES = "forfeit_illegal_moves"
+    TIMEOUT = "timeout"  # kept running out of time on a move: loses on time
     API_ERROR = "api_error"
 
 
@@ -42,6 +44,8 @@ class Attempt(BaseModel):
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     cost_usd: float | None = None
+    finish_reason: str | None = None  # "stop", or "length" if cut off by the token limit
+    timed_out: bool = False  # no reply within the move time limit
 
 
 class MoveRecord(BaseModel):
@@ -60,6 +64,50 @@ class MoveRecord(BaseModel):
         return len(self.attempts) - 1
 
 
+class MoveLabel(StrEnum):
+    BEST = "best"  # the engine's top choice
+    GOOD = "good"
+    INACCURACY = "inaccuracy"
+    MISTAKE = "mistake"
+    BLUNDER = "blunder"
+
+
+class MoveAnalysis(BaseModel):
+    """Stockfish's verdict on one move (filled in by `app.analysis`)."""
+
+    ply: int
+    color: Color
+    # Evaluations are in centipawns (1/100 of a pawn) from White's point of view.
+    # Forced mates are stored as ±(100000 - moves to mate), see `app.analysis.metrics`.
+    eval_before: int
+    eval_after: int
+    best_san: str | None  # what Stockfish would have played
+    best_uci: str | None
+    cp_loss: int  # how much the move gave away, from the mover's point of view
+    win_before: float  # mover's winning chance in %, before and after the move
+    win_after: float
+    accuracy: float  # 0-100
+    label: MoveLabel
+
+
+class PlayerAnalysis(BaseModel):
+    accuracy: float | None  # 0-100, None if the player made no moves
+    acpl: int  # average centipawn loss per move: lower is better
+    counts: dict[MoveLabel, int]
+
+
+class GameAnalysis(BaseModel):
+    engine: str  # e.g. "Stockfish 19"
+    depth: int
+    final_eval: int  # evaluation of the last position, same units as `MoveAnalysis`
+    white: PlayerAnalysis
+    black: PlayerAnalysis
+    moves: list[MoveAnalysis]
+
+    def player(self, color: Color) -> PlayerAnalysis:
+        return self.white if color is Color.WHITE else self.black
+
+
 class PlayerStats(BaseModel):
     model: str
     moves: int
@@ -76,6 +124,8 @@ class GameRecord(BaseModel):
     black_model: str
     show_legal_moves: bool
     max_full_moves: int
+    reasoning_effort: str | None = None  # "low" / "medium" / "high", None = model default
+    move_time_limit: float | None = None  # seconds per reply, None = no limit
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
     result: str = "*"  # "1-0", "0-1", "1/2-1/2", or "*" (unfinished/aborted)
@@ -86,6 +136,7 @@ class GameRecord(BaseModel):
     # Rejected attempts of the final turn when a player forfeited or the API failed.
     failed_attempts: list[Attempt] = Field(default_factory=list)
     failed_color: Color | None = None
+    analysis: GameAnalysis | None = None  # Stockfish analysis, added after the game
     pgn: str = ""
 
     def model_for(self, color: Color) -> str:

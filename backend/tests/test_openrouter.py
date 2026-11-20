@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import httpx
@@ -7,7 +8,7 @@ from openai.types import CompletionUsage
 
 from app.cli import console, save_game
 from app.game.models import GameRecord
-from app.llm.openrouter import LLMError, OpenRouterClient, parse_models
+from app.llm.openrouter import LLMError, LLMTimeout, OpenRouterClient, parse_models
 
 
 def test_parse_models():
@@ -45,7 +46,9 @@ async def test_chat_reads_content_usage_and_cost(monkeypatch):
         {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150, "cost": 0.00042}
     )
     fake = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"move": "e4"}'))],
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content='{"move": "e4"}'), finish_reason="stop")
+        ],
         usage=usage,
         model="openai/gpt-4o-mini",
         model_extra={},
@@ -60,6 +63,21 @@ async def test_chat_reads_content_usage_and_cost(monkeypatch):
     assert resp.content == '{"move": "e4"}'
     assert resp.prompt_tokens == 120
     assert resp.cost_usd == pytest.approx(0.00042)
+    assert resp.finish_reason == "stop"
+
+
+async def test_reasoning_effort_is_sent(monkeypatch):
+    client = OpenRouterClient("test-key", reasoning_effort="low")
+    sent = {}
+
+    async def create(**kwargs):
+        sent.update(kwargs)
+        return ok_response()
+
+    monkeypatch.setattr(client._client.chat.completions, "create", create)
+    await client.chat("x", [])
+    assert sent["extra_body"]["reasoning"] == {"effort": "low"}
+    assert sent["max_tokens"] == 8000
 
 
 async def test_chat_without_choices_raises(monkeypatch):
@@ -84,7 +102,9 @@ def rate_limit_error(headers=None) -> RateLimitError:
 
 def ok_response():
     return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"move": "e4"}'))],
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content='{"move": "e4"}'), finish_reason="stop")
+        ],
         usage=None,
         model="x",
         model_extra={},
@@ -135,6 +155,34 @@ async def test_rate_limit_uses_retry_after_header(monkeypatch):
     client, waits, _ = rate_limited_client(monkeypatch, failures=1, headers={"retry-after": "3"})
     await client.chat("x", [])
     assert waits == [3.0]
+
+
+async def test_slow_reply_raises_timeout(monkeypatch):
+    client = OpenRouterClient("test-key")
+
+    async def create(**kwargs):
+        await asyncio.sleep(1)
+        return ok_response()
+
+    monkeypatch.setattr(client._client.chat.completions, "create", create)
+    with pytest.raises(LLMTimeout, match="no reply within 0.05s"):
+        await client.chat("x", [], timeout=0.05)
+
+
+async def test_rate_limit_wait_does_not_use_up_the_time_limit(monkeypatch):
+    # A real 0.1s wait between tries, longer than the 0.05s limit: only requests are timed.
+    client = OpenRouterClient("test-key", rate_limit_wait_seconds=0.1)
+    calls = {"n": 0}
+
+    async def create(**kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise rate_limit_error()
+        return ok_response()
+
+    monkeypatch.setattr(client._client.chat.completions, "create", create)
+    resp = await client.chat("x", [], timeout=0.05)
+    assert resp.content == '{"move": "e4"}'
 
 
 def test_console_keeps_free_suffix_as_text():

@@ -1,73 +1,26 @@
 # AI Chess Arena
 
-Pick any two LLMs from [OpenRouter](https://openrouter.ai) and watch them play chess against each other.
-Every move is checked for legality, illegal moves get a few retries, and every reply, token and cent is recorded.
+Pick any two AI language models and watch them play chess against each other.
+Each model explains its thinking as it plays, and after the game a chess engine grades every move: who played more accurately, where the blunders were, and what the best move would have been.
 
-## How a turn works
+## How a game works
 
-1. The model gets the position (FEN, move history, a text board and, optionally, the list of legal moves).
-2. It replies with JSON: `{"reasoning": "...", "move": "Nf3"}`.
-3. The move is parsed (it also copes with code fences, `<think>` blocks, `0-0`, `12... Nf6`, `e2e4`) and checked with [python-chess](https://python-chess.readthedocs.io).
-4. If the move is illegal or unreadable, the model is told why and tries again, up to 3 more times. After that it forfeits.
+- On each turn, the model sees the current position and the moves played so far, and answers with its move and a short explanation of why it chose it.
+- Every move is checked against the rules of chess. If a model makes an illegal move, it's told what was wrong and gets a few more tries. A model that keeps failing forfeits the game.
+- Like a chess clock, each move has a time limit. A model that keeps running out of time loses on time.
+- Delays caused by the AI provider itself, such as a busy server, never count against a model.
+- Every answer, its cost and its response time is recorded.
 
-A game ends on checkmate, stalemate, a draw by the rules (threefold repetition, fifty moves, insufficient material), a forfeit, or the move limit.
+A game ends on checkmate, stalemate, a draw by the rules of chess, a forfeit, a loss on time, or when the move limit is reached.
 
-## Quick start
+## Move analysis
 
-Requires [uv](https://docs.astral.sh/uv/) and an [OpenRouter API key](https://openrouter.ai/keys).
+After the game, the [Stockfish](https://stockfishchess.org) chess engine reviews every move, using the same scoring as [Lichess](https://lichess.org/page/accuracy):
 
-```bash
-cp .env.example .env          # then put your OPENROUTER_API_KEY in .env
-cd backend
-uv sync
-```
+- **Move labels:** each move is marked as best, good, an inaccuracy, a mistake or a blunder, depending on how much of the player's winning chances it gave away.
+- **Accuracy:** a score from 0 to 100 for each player. Blunders weigh more than good moves.
+- **Best moves:** for every mistake, the move the engine would have played instead.
 
-List models (add `--free` for free ones, `-s gemma` to search):
+If a game reaches the move limit, the side the engine sees as clearly winning is declared the winner. Otherwise the game is a draw.
 
-```bash
-uv run arena models --free
-```
-
-Play a game:
-
-```bash
-uv run arena play google/gemma-4-31b-it:free nvidia/nemotron-3.5-lightning:free --max-moves 30
-```
-
-Use `--no-legal-moves` for "hard mode", where models don't see the list of legal moves.
-Each game is saved to `backend/games/<id>.json` (every attempt, token count and cost) and `<id>.pgn`, which opens in any chess app with each model's reasoning as move comments.
-
-## Development
-
-```bash
-cd backend
-uv run pytest          # tests (no network calls)
-uv run ruff check .    # lint
-uv run ruff format .   # format
-```
-
-Run the API and Postgres with Docker Compose:
-
-```bash
-docker compose up --build    # API health check at http://localhost:8000/health
-```
-
-## Project structure
-
-```
-backend/
-  app/
-    cli.py              # `arena` command
-    config.py           # settings from .env
-    main.py             # FastAPI app
-    llm/openrouter.py   # OpenRouter client: chat, cost tracking, model list
-    game/
-      runner.py         # game loop: turns, retries, forfeits, endings
-      prompt.py         # what the models are told
-      parsing.py        # pulling the move out of messy replies
-      moves.py          # legality checks with helpful error messages
-      models.py         # game, move and attempt records
-      pgn.py            # PGN export
-  tests/
-docker-compose.yml
-```
+Every game can be exported in the standard chess format (PGN), with each model's explanations and the engine's verdicts as comments, so it can be replayed in any chess app.

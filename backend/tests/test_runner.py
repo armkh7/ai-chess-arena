@@ -4,7 +4,7 @@ import chess.pgn
 
 from app.game.models import Color, Termination
 from app.game.runner import GameRunner
-from app.llm.openrouter import LLMError
+from app.llm.openrouter import LLMError, LLMResponse, LLMTimeout
 from tests.conftest import ScriptedPlayer, reply
 
 
@@ -61,6 +61,56 @@ async def test_unreadable_reply_counts_as_rejected():
     record = await runner(white, black, max_full_moves=1).play()
     assert record.moves[0].attempts[0].error.startswith("No move found")
     assert record.moves[0].san == "d4"
+
+
+async def test_reply_cut_off_by_token_limit_is_explained():
+    cut_off = LLMResponse(
+        content="", model="w", latency_ms=100, completion_tokens=2000, finish_reason="length"
+    )
+    white = ScriptedPlayer("w", [cut_off, "", reply("e4")])
+    black = ScriptedPlayer("b", [reply("e5")])
+    record = await runner(white, black, max_full_moves=1).play()
+
+    first, second = record.moves[0].attempts[:2]
+    assert first.error.startswith("Empty reply: ran out of tokens while thinking (2,000 tokens)")
+    assert first.finish_reason == "length"
+    assert second.error.startswith("Empty reply. Answer with JSON")
+    # The model is told why, so it can think less next time.
+    assert "Think less" in white.calls[1][-1]["content"]
+
+
+async def test_slow_reply_is_retried_with_feedback():
+    white = ScriptedPlayer("w", [LLMTimeout("w: no reply within 30s"), reply("e4")])
+    black = ScriptedPlayer("b", [reply("e5")])
+    record = await runner(white, black, max_full_moves=1, move_time_limit=30).play()
+
+    first = record.moves[0].attempts[0]
+    assert first.timed_out
+    assert first.error.startswith("No reply within 30s")
+    assert first.latency_ms == 30_000
+    assert record.moves[0].san == "e4"
+    assert white.timeouts == [30, 30]  # the limit is passed on every request
+    # No reply arrived, so the retry adds only our message, not an empty assistant turn.
+    assert [m["role"] for m in white.calls[1]] == ["system", "user", "user"]
+    assert "answer faster" in white.calls[1][-1]["content"]
+    assert record.move_time_limit == 30
+
+
+async def test_repeated_timeouts_lose_on_time():
+    white = ScriptedPlayer("w", [LLMTimeout("slow")] * 4)
+    black = ScriptedPlayer("b", [])
+    record = await runner(white, black, max_illegal_retries=3, move_time_limit=10).play()
+
+    assert record.termination is Termination.TIMEOUT
+    assert record.winner is Color.BLACK
+    assert record.result == "0-1"
+
+
+async def test_no_time_limit_by_default():
+    white = ScriptedPlayer("w", [reply("e4")])
+    black = ScriptedPlayer("b", [reply("e5")])
+    await runner(white, black, max_full_moves=1).play()
+    assert white.timeouts == [None]
 
 
 async def test_api_error_aborts_game():

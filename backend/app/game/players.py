@@ -8,7 +8,11 @@ from app.llm.openrouter import LLMResponse, OpenRouterClient
 class Player(Protocol):
     name: str
 
-    async def respond(self, messages: list[dict[str, str]]) -> LLMResponse: ...
+    async def respond(
+        self, messages: list[dict[str, str]], *, timeout: float | None = None
+    ) -> LLMResponse:
+        """Raise `LLMTimeout` if there's no answer within `timeout` seconds."""
+        ...
 
 
 class LLMPlayer:
@@ -18,5 +22,7 @@ class LLMPlayer:
         self.name = model
         self._client = client
 
-    async def respond(self, messages: list[dict[str, str]]) -> LLMResponse:
-        return await self._client.chat(self.name, messages)
+    async def respond(
+        self, messages: list[dict[str, str]], *, timeout: float | None = None
+    ) -> LLMResponse:
+        return await self._client.chat(self.name, messages, timeout=timeout)

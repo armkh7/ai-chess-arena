@@ -18,14 +18,25 @@ from app.game.parsing import parse_reply
 from app.game.pgn import build_pgn
 from app.game.players import Player
 from app.game.prompt import retry_prompt, system_prompt, turn_prompt
-from app.llm.openrouter import LLMError
+from app.llm.openrouter import LLMError, LLMResponse, LLMTimeout
 
 MoveCallback = Callable[[MoveRecord], Awaitable[None] | None]
 RejectCallback = Callable[[Color, Attempt], Awaitable[None] | None]
 
-NO_MOVE_FOUND = (
-    'No move found in your reply. Answer with JSON like {"reasoning": "...", "move": "e4"}.'
-)
+ANSWER_FORMAT = 'Answer with JSON like {"reasoning": "...", "move": "e4"}.'
+NO_MOVE_FOUND = f"No move found in your reply. {ANSWER_FORMAT}"
+
+
+def no_move_error(reply: LLMResponse) -> str:
+    """Why a reply had no move. Also sent back to the model, so it says what to change."""
+    if reply.finish_reason == "length":
+        # Reasoning models spend hidden "thinking" tokens first; those count toward the limit.
+        used = f" ({reply.completion_tokens:,} tokens)" if reply.completion_tokens else ""
+        what = "Empty reply" if not reply.content.strip() else "Reply cut off before the move"
+        return f"{what}: ran out of tokens while thinking{used}. Think less. {ANSWER_FORMAT}"
+    if not reply.content.strip():
+        return f"Empty reply. {ANSWER_FORMAT}"
+    return NO_MOVE_FOUND
 
 
 def _color(turn: chess.Color) -> Color:
@@ -56,11 +67,15 @@ class GameRunner:
         max_full_moves: int = 60,
         max_illegal_retries: int = 3,
         show_legal_moves: bool = True,
+        move_time_limit: float | None = None,
         on_move: MoveCallback | None = None,
         on_rejected: RejectCallback | None = None,
     ) -> None:
         self.white = white
         self.black = black
+        # Seconds a player gets per reply. A slow reply counts as a failed attempt, like an
+        # illegal move; running out of tries this way loses on time.
+        self.move_time_limit = move_time_limit or None
         self.max_full_moves = max_full_moves
         self.max_illegal_retries = max_illegal_retries
         self.show_legal_moves = show_legal_moves
@@ -74,6 +89,7 @@ class GameRunner:
             black_model=self.black.name,
             show_legal_moves=self.show_legal_moves,
             max_full_moves=self.max_full_moves,
+            move_time_limit=self.move_time_limit,
         )
 
         while True:
@@ -106,7 +122,11 @@ class GameRunner:
             if move is None:
                 record.winner = color.opponent
                 record.result = "1-0" if record.winner is Color.WHITE else "0-1"
-                record.termination = Termination.FORFEIT_ILLEGAL_MOVES
+                record.termination = (
+                    Termination.TIMEOUT
+                    if attempts[-1].timed_out
+                    else Termination.FORFEIT_ILLEGAL_MOVES
+                )
                 record.failed_attempts = attempts
                 record.failed_color = color
                 break
@@ -128,7 +148,7 @@ class GameRunner:
             await _notify(self.on_move, move_record)
 
         record.finished_at = datetime.now(UTC)
-        record.pgn = build_pgn(board, record)
+        record.pgn = build_pgn(record)
         return record
 
     async def _play_turn(
@@ -142,8 +162,22 @@ class GameRunner:
 
         for _ in range(1 + self.max_illegal_retries):
             try:
-                reply = await player.respond(messages)
-            except LLMError as exc:
+                reply = await player.respond(messages, timeout=self.move_time_limit)
+            except LLMTimeout:
+                limit = self.move_time_limit or 0
+                attempt = Attempt(
+                    raw_reply="",
+                    error=f"No reply within {limit:g}s: time limit exceeded. "
+                    "Think less and answer faster.",
+                    latency_ms=int(limit * 1000),
+                    timed_out=True,
+                )
+                attempts.append(attempt)
+                await _notify(self.on_rejected, color, attempt)
+                # No reply arrived, so there's no assistant message to send back.
+                messages.append({"role": "user", "content": retry_prompt(attempt.error)})
+                continue
+            except LLMError as exc:  # API problems abort the game; they're nobody's fault
                 raise _TurnAborted(exc, attempts) from exc
 
             parsed = parse_reply(reply.content)
@@ -155,10 +189,11 @@ class GameRunner:
                 prompt_tokens=reply.prompt_tokens,
                 completion_tokens=reply.completion_tokens,
                 cost_usd=reply.cost_usd,
+                finish_reason=reply.finish_reason,
             )
             move: chess.Move | None = None
             if parsed.move is None:
-                attempt.error = NO_MOVE_FOUND
+                attempt.error = no_move_error(reply)
             else:
                 try:
                     move = resolve_move(board, parsed.move)

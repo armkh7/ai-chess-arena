@@ -9,11 +9,15 @@ from typing import Any
 import httpx
 from openai import APIError, AsyncOpenAI, RateLimitError
 
-from app.config import Settings
+from app.config import ReasoningEffort, Settings
 
 
 class LLMError(Exception):
     """The model could not be reached or returned no usable response."""
+
+
+class LLMTimeout(LLMError):
+    """The model didn't answer within the time limit. That's the model's fault, not the API's."""
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,8 @@ class LLMResponse:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     cost_usd: float | None = None
+    # Why the model stopped: "stop" (finished), "length" (hit max_tokens), ...
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,8 +104,9 @@ class OpenRouterClient:
         *,
         base_url: str = "https://openrouter.ai/api/v1",
         timeout: float = 90.0,
-        max_tokens: int = 2000,
+        max_tokens: int = 8000,
         app_name: str = "AI Chess Arena",
+        reasoning_effort: ReasoningEffort | None = None,
         rate_limit_retries: int = 4,
         rate_limit_wait_seconds: float = 15.0,
         on_rate_limit: OnRateLimit | None = None,
@@ -109,6 +116,7 @@ class OpenRouterClient:
             raise LLMError("OPENROUTER_API_KEY is not set. Copy .env.example to .env and add it.")
         self._base_url = base_url
         self._max_tokens = max_tokens
+        self.reasoning_effort = reasoning_effort
         self._rate_limit_retries = rate_limit_retries
         self._rate_limit_wait = rate_limit_wait_seconds
         self.on_rate_limit = on_rate_limit
@@ -131,21 +139,32 @@ class OpenRouterClient:
             timeout=settings.llm_timeout_seconds,
             max_tokens=settings.llm_max_tokens,
             app_name=settings.app_name,
+            reasoning_effort=settings.reasoning_effort,
             rate_limit_retries=settings.rate_limit_retries,
             rate_limit_wait_seconds=settings.rate_limit_wait_seconds,
         )
 
-    async def chat(self, model: str, messages: list[dict[str, str]]) -> LLMResponse:
+    async def chat(
+        self, model: str, messages: list[dict[str, str]], *, timeout: float | None = None
+    ) -> LLMResponse:
+        """Ask the model. `timeout` limits each request; rate-limit waits don't count."""
+        extra_body: dict[str, Any] = {"usage": {"include": True}}  # ask OpenRouter for cost
+        if self.reasoning_effort:
+            # OpenRouter's unified setting; models without thinking ignore it.
+            extra_body["reasoning"] = {"effort": self.reasoning_effort}
         for retry in range(self._rate_limit_retries + 1):
             start = time.perf_counter()
             try:
-                resp = await self._client.chat.completions.create(
-                    model=model,
-                    messages=messages,  # type: ignore[arg-type]
-                    max_tokens=self._max_tokens,
-                    extra_body={"usage": {"include": True}},  # ask OpenRouter to report cost
-                )
+                async with asyncio.timeout(timeout):  # None = no limit
+                    resp = await self._client.chat.completions.create(
+                        model=model,
+                        messages=messages,  # type: ignore[arg-type]
+                        max_tokens=self._max_tokens,
+                        extra_body=extra_body,
+                    )
                 break
+            except TimeoutError as exc:
+                raise LLMTimeout(f"{model}: no reply within {timeout:g}s") from exc
             except RateLimitError as exc:
                 if retry == self._rate_limit_retries:
                     raise LLMError(
@@ -174,6 +193,7 @@ class OpenRouterClient:
             prompt_tokens=usage.prompt_tokens if usage else None,
             completion_tokens=usage.completion_tokens if usage else None,
             cost_usd=float(cost) if cost is not None else None,
+            finish_reason=resp.choices[0].finish_reason,
         )
 
     async def list_models(self) -> list[ModelInfo]:
