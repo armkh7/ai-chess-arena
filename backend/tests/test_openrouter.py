@@ -1,9 +1,11 @@
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from openai import RateLimitError
 from openai.types import CompletionUsage
 
-from app.cli import save_game
+from app.cli import console, save_game
 from app.game.models import GameRecord
 from app.llm.openrouter import LLMError, OpenRouterClient, parse_models
 
@@ -71,6 +73,74 @@ async def test_chat_without_choices_raises(monkeypatch):
     monkeypatch.setattr(client._client.chat.completions, "create", create)
     with pytest.raises(LLMError, match="overloaded"):
         await client.chat("x", [])
+
+
+def rate_limit_error(headers=None) -> RateLimitError:
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    response = httpx.Response(429, request=request, headers=headers or {})
+    body = {"message": "Provider returned error", "metadata": {"raw": "busy upstream"}}
+    return RateLimitError("Error code: 429", response=response, body=body)
+
+
+def ok_response():
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"move": "e4"}'))],
+        usage=None,
+        model="x",
+        model_extra={},
+    )
+
+
+def rate_limited_client(monkeypatch, failures: int, headers=None, retries: int = 4):
+    waits, notices = [], []
+
+    async def fake_sleep(seconds):
+        waits.append(seconds)
+
+    client = OpenRouterClient(
+        "test-key",
+        rate_limit_retries=retries,
+        rate_limit_wait_seconds=10,
+        on_rate_limit=lambda model, seconds, retry: notices.append(retry),
+        sleep=fake_sleep,
+    )
+    calls = {"n": 0}
+
+    async def create(**kwargs):
+        calls["n"] += 1
+        if calls["n"] <= failures:
+            raise rate_limit_error(headers)
+        return ok_response()
+
+    monkeypatch.setattr(client._client.chat.completions, "create", create)
+    return client, waits, notices
+
+
+async def test_rate_limit_waits_and_retries(monkeypatch):
+    client, waits, notices = rate_limited_client(monkeypatch, failures=2)
+    resp = await client.chat("x", [])
+    assert resp.content == '{"move": "e4"}'
+    assert waits == [10, 20]  # wait grows with each retry
+    assert notices == [1, 2]
+
+
+async def test_rate_limit_gives_up_with_provider_message(monkeypatch):
+    client, waits, _ = rate_limited_client(monkeypatch, failures=99, retries=2)
+    with pytest.raises(LLMError, match="gave up after 2 retries.*busy upstream"):
+        await client.chat("x", [])
+    assert waits == [10, 20]
+
+
+async def test_rate_limit_uses_retry_after_header(monkeypatch):
+    client, waits, _ = rate_limited_client(monkeypatch, failures=1, headers={"retry-after": "3"})
+    await client.chat("x", [])
+    assert waits == [3.0]
+
+
+def test_console_keeps_free_suffix_as_text():
+    with console.capture() as captured:
+        console.print("google/gemma-4-31b-it:free: Error code: 429")
+    assert ":free:" in captured.get()
 
 
 def test_save_game(tmp_path):

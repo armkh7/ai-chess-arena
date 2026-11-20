@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     llm_timeout_seconds: float = 90.0
     llm_max_tokens: int = 2000
+    # Free models are often rate limited (HTTP 429). Wait and retry: 15s, 30s, 45s, 60s.
+    rate_limit_retries: int = 4
+    rate_limit_wait_seconds: float = 15.0
 
     # Game rules
     max_full_moves: int = 60  # after this many moves per side the game stops

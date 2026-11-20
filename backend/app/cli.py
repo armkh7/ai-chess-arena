@@ -6,6 +6,7 @@ from pathlib import Path
 import chess
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from app.config import get_settings
@@ -16,7 +17,8 @@ from app.game.runner import GameRunner
 from app.llm.openrouter import LLMError, OpenRouterClient, fetch_models
 
 app = typer.Typer(help="AI Chess Arena: let two LLMs play chess.", no_args_is_help=True)
-console = Console()
+# emoji=False: otherwise rich turns text like "gemma:free: Error" into the 🆓 emoji.
+console = Console(emoji=False)
 
 
 @app.command()
@@ -58,9 +60,18 @@ def _print_move(move: MoveRecord) -> None:
 
 
 def _print_rejected(color: Color, attempt: Attempt) -> None:
-    tried = attempt.move_text or "no move"
+    tried = escape(attempt.move_text or "no move")
     console.print(
-        f"        [yellow]✗ {color.value} tried {tried}: {attempt.error}[/]", highlight=False
+        f"        [yellow]✗ {color.value} tried {tried}: {escape(attempt.error or '')}[/]",
+        highlight=False,
+    )
+
+
+def _print_rate_limit(model: str, seconds: float, retry: int) -> None:
+    console.print(
+        f"        [yellow]⏳ {escape(model)} is rate limited, waiting {seconds:.0f}s "
+        f"(retry {retry})[/]",
+        highlight=False,
     )
 
 
@@ -72,7 +83,7 @@ def _print_summary(record: GameRecord) -> None:
     termination = record.termination.value if record.termination else "?"
     console.rule(f"[bold]Result: {record.result}[/]  ({termination.replace('_', ' ')})")
     if record.error:
-        console.print(f"[red]{record.error}[/]")
+        console.print(record.error, style="red", markup=False, highlight=False)
 
     table = Table()
     table.add_column("")
@@ -122,8 +133,9 @@ def play(
     try:
         client = OpenRouterClient.from_settings(settings)
     except LLMError as exc:
-        console.print(f"[red]{exc}[/]")
+        console.print(str(exc), style="red", markup=False)
         raise typer.Exit(1) from exc
+    client.on_rate_limit = _print_rate_limit
 
     runner = GameRunner(
         LLMPlayer(client, white),
@@ -139,6 +151,9 @@ def play(
     record = asyncio.run(runner.play())
 
     _print_summary(record)
+    if not record.moves:
+        console.print("[dim]Not saved: no moves were played.[/]")
+        return
     json_path, pgn_path = save_game(record, out)
     console.print(f"Saved: {json_path}  and  {pgn_path}")
 

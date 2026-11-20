@@ -1,11 +1,13 @@
 """Thin async client for OpenRouter (OpenAI-compatible API)."""
 
+import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from openai import APIError, AsyncOpenAI
+from openai import APIError, AsyncOpenAI, RateLimitError
 
 from app.config import Settings
 
@@ -71,6 +73,24 @@ def parse_models(payload: dict[str, Any]) -> list[ModelInfo]:
     return sorted(models, key=lambda m: m.id)
 
 
+def _rate_limit_details(exc: RateLimitError) -> str:
+    """OpenRouter puts the provider's own message in `error.metadata.raw`; fall back to ours."""
+    body = exc.body if isinstance(exc.body, dict) else {}
+    raw = (body.get("metadata") or {}).get("raw") or body.get("message") or str(exc)
+    return str(raw)[:200]
+
+
+def _retry_after(exc: RateLimitError) -> float | None:
+    try:
+        return float(exc.response.headers.get("retry-after", ""))
+    except ValueError:
+        return None
+
+
+# Called before each rate-limit wait with (model, seconds, retry number).
+OnRateLimit = Callable[[str, float, int], None]
+
+
 class OpenRouterClient:
     def __init__(
         self,
@@ -80,17 +100,26 @@ class OpenRouterClient:
         timeout: float = 90.0,
         max_tokens: int = 2000,
         app_name: str = "AI Chess Arena",
+        rate_limit_retries: int = 4,
+        rate_limit_wait_seconds: float = 15.0,
+        on_rate_limit: OnRateLimit | None = None,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         if not api_key:
             raise LLMError("OPENROUTER_API_KEY is not set. Copy .env.example to .env and add it.")
         self._base_url = base_url
         self._max_tokens = max_tokens
-        # The SDK retries rate limits (429) and server errors (5xx) with backoff.
+        self._rate_limit_retries = rate_limit_retries
+        self._rate_limit_wait = rate_limit_wait_seconds
+        self.on_rate_limit = on_rate_limit
+        self._sleep = sleep
+        # The SDK retries server errors (5xx) and short 429s within a few seconds. Free models
+        # are often limited for longer, so `chat` adds its own slower retries on top.
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             timeout=timeout,
-            max_retries=3,
+            max_retries=2,
             default_headers={"X-Title": app_name},
         )
 
@@ -102,19 +131,34 @@ class OpenRouterClient:
             timeout=settings.llm_timeout_seconds,
             max_tokens=settings.llm_max_tokens,
             app_name=settings.app_name,
+            rate_limit_retries=settings.rate_limit_retries,
+            rate_limit_wait_seconds=settings.rate_limit_wait_seconds,
         )
 
     async def chat(self, model: str, messages: list[dict[str, str]]) -> LLMResponse:
-        start = time.perf_counter()
-        try:
-            resp = await self._client.chat.completions.create(
-                model=model,
-                messages=messages,  # type: ignore[arg-type]
-                max_tokens=self._max_tokens,
-                extra_body={"usage": {"include": True}},  # ask OpenRouter to report cost
-            )
-        except APIError as exc:
-            raise LLMError(f"{model}: {exc}") from exc
+        for retry in range(self._rate_limit_retries + 1):
+            start = time.perf_counter()
+            try:
+                resp = await self._client.chat.completions.create(
+                    model=model,
+                    messages=messages,  # type: ignore[arg-type]
+                    max_tokens=self._max_tokens,
+                    extra_body={"usage": {"include": True}},  # ask OpenRouter to report cost
+                )
+                break
+            except RateLimitError as exc:
+                if retry == self._rate_limit_retries:
+                    raise LLMError(
+                        f"{model}: rate limited (HTTP 429), gave up after {retry} retries. "
+                        f"Free models share a small quota: wait a few minutes or pick another "
+                        f"model. Provider said: {_rate_limit_details(exc)}"
+                    ) from exc
+                wait = min(_retry_after(exc) or self._rate_limit_wait * (retry + 1), 120.0)
+                if self.on_rate_limit:
+                    self.on_rate_limit(model, wait, retry + 1)
+                await self._sleep(wait)
+            except APIError as exc:
+                raise LLMError(f"{model}: {exc}") from exc
         latency_ms = int((time.perf_counter() - start) * 1000)
 
         if not resp.choices:
