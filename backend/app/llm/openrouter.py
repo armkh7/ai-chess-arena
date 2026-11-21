@@ -145,13 +145,25 @@ class OpenRouterClient:
         )
 
     async def chat(
-        self, model: str, messages: list[dict[str, str]], *, timeout: float | None = None
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        *,
+        timeout: float | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        on_rate_limit: OnRateLimit | None = None,
     ) -> LLMResponse:
-        """Ask the model. `timeout` limits each request; rate-limit waits don't count."""
+        """Ask the model. `timeout` limits each request; rate-limit waits don't count.
+
+        `reasoning_effort` and `on_rate_limit` override the client's defaults for this call,
+        so one shared client can serve several games with different settings.
+        """
+        effort = reasoning_effort or self.reasoning_effort
+        notify = on_rate_limit or self.on_rate_limit
         extra_body: dict[str, Any] = {"usage": {"include": True}}  # ask OpenRouter for cost
-        if self.reasoning_effort:
+        if effort:
             # OpenRouter's unified setting; models without thinking ignore it.
-            extra_body["reasoning"] = {"effort": self.reasoning_effort}
+            extra_body["reasoning"] = {"effort": effort}
         for retry in range(self._rate_limit_retries + 1):
             start = time.perf_counter()
             try:
@@ -173,8 +185,8 @@ class OpenRouterClient:
                         f"model. Provider said: {_rate_limit_details(exc)}"
                     ) from exc
                 wait = min(_retry_after(exc) or self._rate_limit_wait * (retry + 1), 120.0)
-                if self.on_rate_limit:
-                    self.on_rate_limit(model, wait, retry + 1)
+                if notify:
+                    notify(model, wait, retry + 1)
                 await self._sleep(wait)
             except APIError as exc:
                 raise LLMError(f"{model}: {exc}") from exc
@@ -198,6 +210,9 @@ class OpenRouterClient:
 
     async def list_models(self) -> list[ModelInfo]:
         return await fetch_models(self._base_url)
+
+    async def aclose(self) -> None:
+        await self._client.close()
 
 
 async def fetch_models(base_url: str = "https://openrouter.ai/api/v1") -> list[ModelInfo]:

@@ -10,6 +10,7 @@ Each model explains its thinking as it plays, and after the game a chess engine 
 - Like a chess clock, each move has a time limit. A model that keeps running out of time loses on time.
 - Delays caused by the AI provider itself, such as a busy server, never count against a model.
 - Every answer, its cost and its response time is recorded.
+- Games are played live: you can watch each move and its explanation the moment it's made, and every game is saved so it can be replayed later.
 
 A game ends on checkmate, stalemate, a draw by the rules of chess, a forfeit, a loss on time, or when the move limit is reached.
 

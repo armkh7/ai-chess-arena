@@ -47,8 +47,14 @@ class Settings(BaseSettings):
     # At the move limit, a side ahead by at least this many centipawns (300 = 3 pawns) wins.
     adjudicate_min_cp: int = 300
 
-    # Database (used from Phase 3)
-    database_url: str = "postgresql+psycopg://arena:arena@localhost:5432/arena"
+    # Database: set DATABASE_URL in .env (see .env.example). Only the API needs it.
+    database_url: str | None = None
+    create_tables_on_startup: bool = False  # tests only; real databases use Alembic migrations
+
+    # API
+    max_concurrent_games: int = 3  # more games wait in a queue
+    max_moves_limit: int = 100  # highest max_moves a client may ask for
+    cors_origins: list[str] = ["http://localhost:3000"]  # the frontend's address
 
 
 @lru_cache

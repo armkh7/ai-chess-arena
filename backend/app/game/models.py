@@ -122,8 +122,8 @@ class GameRecord(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     white_model: str
     black_model: str
-    show_legal_moves: bool
-    max_full_moves: int
+    show_legal_moves: bool = True
+    max_full_moves: int = 60
     reasoning_effort: str | None = None  # "low" / "medium" / "high", None = model default
     move_time_limit: float | None = None  # seconds per reply, None = no limit
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -82,15 +82,16 @@ class GameRunner:
         self.on_move = on_move
         self.on_rejected = on_rejected
 
-    async def play(self) -> GameRecord:
+    async def play(self, record: GameRecord | None = None) -> GameRecord:
+        """Play the game. Pass a `record` to fill in one created earlier (the API does this so
+        it knows the game id up front and can save progress after every move)."""
         board = chess.Board()
-        record = GameRecord(
-            white_model=self.white.name,
-            black_model=self.black.name,
-            show_legal_moves=self.show_legal_moves,
-            max_full_moves=self.max_full_moves,
-            move_time_limit=self.move_time_limit,
-        )
+        record = record or GameRecord(white_model=self.white.name, black_model=self.black.name)
+        record.white_model = self.white.name
+        record.black_model = self.black.name
+        record.show_legal_moves = self.show_legal_moves
+        record.max_full_moves = self.max_full_moves
+        record.move_time_limit = self.move_time_limit
 
         while True:
             # claim_draw=True ends the game on threefold repetition / fifty moves right away,
