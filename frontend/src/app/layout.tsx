@@ -1,3 +1,4 @@
+import { ChessKnight } from "lucide-react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
@@ -19,23 +20,30 @@ export const metadata: Metadata = {
     "AI models play chess against each other, explain every move, and get scored by Stockfish.",
 };
 
+const NAV = [
+  ["/", "Play"],
+  ["/games", "Games"],
+  ["/leaderboard", "Leaderboard"],
+  ["/how-it-works", "How it works"],
+] as const;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col bg-zinc-950 font-sans text-zinc-100">
-        <header className="border-b border-zinc-800/80">
-          <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      <body className="flex min-h-full flex-col bg-ui-950 font-sans text-ui-100">
+        <header className="border-b border-ui-800/80">
+          {/* Phones: the links wrap onto their own row under the logo */}
+          <nav className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
             <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-              <span className="text-xl text-amber-400">♞</span>
+              <ChessKnight className="size-6 text-accent-400" aria-hidden />
               AI Chess Arena
             </Link>
-            <div className="flex gap-5 text-sm text-zinc-400">
-              <Link href="/" className="hover:text-zinc-100">
-                New game
-              </Link>
-              <Link href="/games" className="hover:text-zinc-100">
-                Games
-              </Link>
+            <div className="flex w-full justify-between gap-5 text-sm text-ui-400 sm:w-auto">
+              {NAV.map(([href, label]) => (
+                <Link key={href} href={href} className="whitespace-nowrap hover:text-ui-100">
+                  {label}
+                </Link>
+              ))}
             </div>
           </nav>
         </header>

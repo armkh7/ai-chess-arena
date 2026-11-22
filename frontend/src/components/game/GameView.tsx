@@ -1,5 +1,15 @@
 "use client";
 
+import {
+  ArrowRight,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+} from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Board } from "@/components/game/Board";
@@ -70,7 +80,7 @@ export function GameView({ id }: { id: string }) {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (live || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (live || !total || event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.key === " ") {
         event.preventDefault();
         togglePlay();
@@ -97,15 +107,18 @@ export function GameView({ id }: { id: string }) {
 
   if (game.connection === "failed" && !game.info) {
     return (
-      <div className="space-y-3 rounded-2xl border border-zinc-800 p-6">
+      <div className="space-y-3 rounded-2xl border border-ui-800 p-6">
         <p>This game doesn&apos;t exist, or the arena server can&apos;t be reached.</p>
-        <Link href="/" className="text-sm text-amber-400 hover:underline">
-          Start a new game →
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 text-sm text-accent-400 hover:underline"
+        >
+          Start a new game <ArrowRight className="size-4" aria-hidden />
         </Link>
       </div>
     );
   }
-  if (!game.info) return <p className="text-zinc-500">Loading game…</p>;
+  if (!game.info) return <p className="text-ui-400">Loading game…</p>;
 
   const info = game.info;
   const move = ply > 0 ? game.moves[ply - 1] : undefined;
@@ -160,73 +173,66 @@ export function GameView({ id }: { id: string }) {
           {strip(bottom)}
           {live ? (
             <div className="mt-2 flex items-center">
-              <button
-                type="button"
-                onClick={() => setFlipped((f) => !f)}
-                className="ml-auto rounded-md px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
-              >
-                Flip board
-              </button>
+              <FlipButton onClick={() => setFlipped((f) => !f)} />
             </div>
           ) : (
             <div className="mt-2 flex items-center gap-1">
               <NavButton label="First move" onClick={() => jump(0)} disabled={ply === 0}>
-                ⏮
+                <SkipBack className="size-4" />
               </NavButton>
               <NavButton
                 label="Previous move (←)"
                 onClick={() => jump(ply - 1)}
                 disabled={ply === 0}
               >
-                ◀
+                <ChevronLeft className="size-5" />
               </NavButton>
               <button
                 type="button"
                 onClick={togglePlay}
                 disabled={total === 0}
                 title={autoplaying ? "Pause (space)" : "Play the moves (space)"}
-                className="mx-1 rounded-md bg-amber-400 px-4 py-1.5 text-sm font-semibold text-zinc-950 transition hover:bg-amber-300 disabled:opacity-30"
+                className="mx-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-accent-400 px-4 py-1.5 text-sm font-semibold text-ui-950 transition hover:bg-accent-300 disabled:opacity-30"
               >
-                {autoplaying ? "❚❚ Pause" : "▶ Play"}
+                {autoplaying ? (
+                  <Pause className="size-4" fill="currentColor" aria-hidden />
+                ) : (
+                  <Play className="size-4" fill="currentColor" aria-hidden />
+                )}
+                {autoplaying ? "Pause" : "Play"}
               </button>
               <NavButton
                 label="Next move (→)"
                 onClick={() => jump(ply + 1)}
                 disabled={ply >= total}
               >
-                ▶
+                <ChevronRight className="size-5" />
               </NavButton>
               <NavButton label="Last move" onClick={() => jump(total)} disabled={ply >= total}>
-                ⏭
+                <SkipForward className="size-4" />
               </NavButton>
-              <span className="ml-2 text-xs tabular-nums text-zinc-500">
+              <span className="ml-2 hidden whitespace-nowrap text-xs tabular-nums text-ui-400 sm:inline">
                 {ply} / {total}
               </span>
-              <button
-                type="button"
-                onClick={() => setFlipped((f) => !f)}
-                className="ml-auto rounded-md px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
-              >
-                Flip board
-              </button>
+              <FlipButton onClick={() => setFlipped((f) => !f)} />
             </div>
           )}
         </section>
 
         <aside className="flex min-w-0 flex-col gap-4">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+          <div className="rounded-xl border border-ui-800 bg-ui-900/40 p-4">
             {outcome ? (
               <>
                 <p className="text-lg font-semibold">{resultText(outcome.result)}</p>
-                <p className="text-sm text-zinc-400">
+                <p className="text-sm text-ui-400">
                   {game.end && game.end.status !== "finished"
                     ? STATUS_TEXT[game.end.status]
                     : endingText(outcome.termination, outcome.winner)}
                 </p>
                 {game.end?.error && <p className="mt-1 text-sm text-red-400">{game.end.error}</p>}
                 {reviewing && game.status && (
-                  <p className="mt-2 flex items-center gap-2 text-sm text-violet-300">
-                    <span className="size-2 animate-pulse rounded-full bg-violet-400" />
+                  <p className="mt-2 flex items-center gap-2 text-sm text-agent-300">
+                    <span className="size-2 animate-pulse rounded-full bg-agent-400" />
                     {STATUS_TEXT[game.status]}…
                   </p>
                 )}
@@ -236,13 +242,13 @@ export function GameView({ id }: { id: string }) {
                 {live && <span className="size-2 animate-pulse rounded-full bg-red-400" />}
                 {game.status ? STATUS_TEXT[game.status] : "Connecting…"}
                 {game.status === "running" && (
-                  <span className="text-sm font-normal text-zinc-400">
+                  <span className="text-sm font-normal text-ui-400">
                     · move {Math.floor(total / 2) + 1}
                   </span>
                 )}
               </p>
             )}
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ui-400">
               {info.move_time_limit && <span>{info.move_time_limit} s per move</span>}
               {info.reasoning_effort && <span>{info.reasoning_effort} reasoning effort</span>}
               {game.analysis && (
@@ -253,7 +259,7 @@ export function GameView({ id }: { id: string }) {
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div className="rounded-xl border border-ui-800 bg-ui-900/40">
             <MoveList
               moves={game.moves}
               analysis={analysis}
@@ -262,16 +268,16 @@ export function GameView({ id }: { id: string }) {
             />
           </div>
 
-          <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+          <div className="space-y-4 rounded-xl border border-ui-800 bg-ui-900/40 p-4">
             {move ? (
               <MoveDetails move={move} analysis={analysis.get(move.ply)} />
             ) : (
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-ui-400">
                 Starting position. Press Play, use the arrow keys, or click a move.
               </p>
             )}
             {ply === total && thinking && (
-              <div className="border-t border-zinc-800 pt-4">
+              <div className="border-t border-ui-800 pt-4">
                 <Thinking
                   color={toMove}
                   seconds={thinkingSeconds}
@@ -281,7 +287,7 @@ export function GameView({ id }: { id: string }) {
               </div>
             )}
             {ply === total && failed?.failed_color && (
-              <div className="border-t border-zinc-800 pt-4">
+              <div className="border-t border-ui-800 pt-4">
                 <RejectedTries
                   attempts={failed.failed_attempts}
                   title={`${colorName(failed.failed_color)}'s last tries`}
@@ -317,9 +323,25 @@ function NavButton(props: {
       aria-label={props.label}
       onClick={props.onClick}
       disabled={props.disabled}
-      className="rounded-md px-3 py-1.5 text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-30 disabled:hover:bg-transparent"
+      className="inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-ui-300 transition hover:bg-ui-800 disabled:opacity-30 disabled:hover:bg-transparent sm:px-3"
     >
       {props.children}
+    </button>
+  );
+}
+
+/** "Flip board" on wider screens, an icon on phones. */
+function FlipButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Flip board"
+      aria-label="Flip board"
+      className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-ui-400 transition hover:bg-ui-800 hover:text-ui-100"
+    >
+      <ArrowUpDown className="size-4" aria-hidden />
+      <span className="hidden sm:inline">Flip board</span>
     </button>
   );
 }

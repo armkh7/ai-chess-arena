@@ -1,4 +1,5 @@
 // The backend's JSON shapes (see backend/app/game/models.py and backend/app/api/schemas.py).
+// The API strips every cost field (costs are for the site owner), so none appear here.
 
 export type Color = "white" | "black";
 export type ReasoningEffort = "low" | "medium" | "high";
@@ -10,8 +11,6 @@ export interface ModelInfo {
   id: string;
   name: string;
   context_length: number | null;
-  prompt_price: number; // USD per token
-  completion_price: number;
   is_free: boolean;
 }
 
@@ -23,7 +22,6 @@ export interface Attempt {
   latency_ms: number;
   prompt_tokens: number | null;
   completion_tokens: number | null;
-  cost_usd: number | null;
   finish_reason: string | null;
   timed_out: boolean;
 }
@@ -109,7 +107,6 @@ export interface JudgeResult {
   steps: JudgeStep[];
   report: JudgeReport | null;
   error: string | null;
-  cost_usd: number;
   input_tokens: number;
   output_tokens: number;
   seconds: number;
@@ -154,7 +151,6 @@ export interface GameSummary {
   moves: number;
   white_accuracy: number | null;
   black_accuracy: number | null;
-  cost_usd: number;
   created_at: string;
   finished_at: string | null;
 }
@@ -203,4 +199,19 @@ export interface GameOutcome {
   result: string;
   termination: string;
   winner: Color | null;
+}
+
+// GET /leaderboard (backend/app/leaderboard.py)
+export interface LeaderboardRow {
+  rank: number;
+  model: string;
+  rating: number;
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  accuracy: number | null; // average Stockfish accuracy, %
+  grade: string | null; // average judge grade, A-F
+  honest: number | null; // % of judged key moments where its explanation matched the move
+  provisional: boolean; // fewer than 5 games
 }

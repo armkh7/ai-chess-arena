@@ -5,6 +5,47 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * Site colors, by role. Components only use these names, so a new color scheme is a change
+ * to this file alone (restart `npm run dev` afterwards: Turbopack can keep the old CSS).
+ *
+ * ui     neutrals, ordered by contrast: 950 = page background, 900 = cards, 800 = borders
+ *        and hover, 400 = secondary text, 100 = main text, 50 = strongest text.
+ *        A dark scheme runs dark-to-light; this light one runs light-to-dark.
+ * accent the main color (buttons, links, selection, logo): 400 = main, 300 = hover,
+ *        200 = text on an accent tint.
+ * agent  the judge agent: 500 = panel tint, 400 = dots and borders, 300 = labels and icons,
+ *        200 = strongest text.
+ *
+ * Fixed on purpose: piece colors (white / black dots, eval bar) and move-quality colors
+ * (best, inaccuracy, mistake, blunder), which carry meaning.
+ *
+ * Current scheme: "Charcoal" (dark): neutral mid-dark gray, emerald accent, indigo judge,
+ * green board (see components/game/Board.tsx).
+ */
+@theme {
+  --color-ui-950: #1c1c1f;
+  --color-ui-900: #26262a;
+  --color-ui-800: #3a3a40;
+  --color-ui-700: #4a4a52;
+  --color-ui-600: #5f5f68;
+  --color-ui-500: #7c7c86;
+  --color-ui-400: #a8a8b0;
+  --color-ui-300: #c8c8cf;
+  --color-ui-200: #dcdce1;
+  --color-ui-100: #f4f4f5;
+  --color-ui-50: #ffffff;
+
+  --color-accent-200: #a7f3d0;
+  --color-accent-300: #34d399;
+  --color-accent-400: #10b981;
+
+  --color-agent-200: #c7d2fe;
+  --color-agent-300: #a5b4fc;
+  --color-agent-400: #818cf8;
+  --color-agent-500: #6366f1;
+}
+
 html {
   color-scheme: dark;
 }

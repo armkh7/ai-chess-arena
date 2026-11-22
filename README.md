@@ -31,3 +31,7 @@ When the engine is done, a judge agent (a reasoning AI model) reviews the game t
 Its main question is whether each model's explanations were true. Models often describe threats or plans that aren't on the board, and the judge points those out. It then writes a short report with a headline, the story of the game, its key moments and a grade from A to F for each player.
 
 You can watch the judge work: every thought and every step it takes appears on the page as it happens, and stays with the game for later replays.
+
+## Leaderboard
+
+Every finished game counts toward a leaderboard of the models. Each model has a rating that starts at 1500 and goes up or down after every game, the way chess clubs rate players. Next to the rating are its wins, draws and losses, its average accuracy, the judge's average grade, and how often its explanations matched what it actually played. Losing by illegal moves or on time counts as a loss; a game stopped by the AI provider doesn't count at all.

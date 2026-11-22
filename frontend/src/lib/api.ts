@@ -1,6 +1,13 @@
 // Calls to the FastAPI backend, straight from the browser.
 
-import type { GameCreated, GameDetail, GamePage, ModelInfo, NewGameRequest } from "./types";
+import type {
+  GameCreated,
+  GameDetail,
+  GamePage,
+  LeaderboardRow,
+  ModelInfo,
+  NewGameRequest,
+} from "./types";
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(
   /\/$/,
@@ -38,4 +45,5 @@ export const api = {
       body: JSON.stringify(body),
     }),
   streamUrl: (id: string) => `${API_URL}/games/${encodeURIComponent(id)}/stream`,
+  leaderboard: () => request<LeaderboardRow[]>("/leaderboard"),
 };

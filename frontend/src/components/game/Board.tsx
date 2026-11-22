@@ -4,7 +4,10 @@ import type { CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
 import type { Color } from "@/lib/types";
 
-const LAST_MOVE: CSSProperties = { backgroundColor: "rgba(250, 204, 21, 0.4)" };
+// Green board: cream and felt-green squares, the last move in soft yellow.
+const LIGHT = "#ebe6d2";
+const DARK = "#5e7d63";
+const LAST_MOVE: CSSProperties = { backgroundColor: "rgba(250, 204, 21, 0.45)" };
 
 /** A read-only board: the position, with the last move's squares highlighted. */
 export function Board({
@@ -30,8 +33,11 @@ export function Board({
         allowDragging: false,
         animationDurationInMs: 200,
         squareStyles,
-        darkSquareStyle: { backgroundColor: "#7c8c6b" },
-        lightSquareStyle: { backgroundColor: "#e7e3d4" },
+        darkSquareStyle: { backgroundColor: DARK },
+        lightSquareStyle: { backgroundColor: LIGHT },
+        // Coordinates in the opposite square's color, like most chess sites.
+        darkSquareNotationStyle: { color: LIGHT, fontWeight: 600 },
+        lightSquareNotationStyle: { color: DARK, fontWeight: 600 },
         boardStyle: { borderRadius: "6px", overflow: "hidden" },
       }}
     />

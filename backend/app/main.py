@@ -12,6 +12,7 @@ from app.api.routes import ModelCatalog, ModelSource, router
 from app.config import ReasoningEffort, Settings, get_settings
 from app.game.players import LLMPlayer
 from app.judge.agent import LangChainJudge
+from app.limits import RateLimiter
 from app.llm.openrouter import OnRateLimit, OpenRouterClient, fetch_models
 from app.public_models import load_public_models
 from app.service import EvaluatorFactory, GameService, JudgeFactory, PlayerFactory
@@ -61,6 +62,7 @@ def create_app(
                 )
 
         app.state.settings = settings
+        app.state.visitor_limiter = RateLimiter(settings.games_per_visitor_per_hour, window=3600)
         app.state.public_models = load_public_models(settings.public_models_file)
         app.state.catalog = ModelCatalog(
             model_source or (lambda: fetch_models(settings.openrouter_base_url))

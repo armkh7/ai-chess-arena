@@ -1,11 +1,13 @@
 """Endpoints.
 
-GET  /models                 models visitors can pick (`public_models.toml`), with OpenRouter
-                             prices (cached for 10 minutes)
+GET  /models                 models visitors can pick (`public_models.toml`; cached 10 minutes)
 POST /games                  start a game; returns at once, the game plays in the background
 GET  /games                  finished and running games, newest first
 GET  /games/{id}             one game with every move, attempt and the analysis
 GET  /games/{id}/stream      live events (Server-Sent Events): the history, then each new event
+GET  /leaderboard            Elo ratings and per-model stats from finished games
+
+No response contains costs: they're for the site owner (`app.costs`).
 """
 
 import json
@@ -13,10 +15,14 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from app.api.schemas import GameCreated, GameDetail, GamePage, GameRequest, ModelOut
 from app.config import Settings
+from app.costs import strip_costs
+from app.leaderboard import LeaderboardRow, build_leaderboard
+from app.limits import minutes_text, seconds_until_tomorrow, start_of_day
 from app.live import Event
 from app.llm.openrouter import ModelInfo
 from app.public_models import PublicModels
@@ -74,6 +80,40 @@ async def list_models(request: Request, free: bool = False) -> list[ModelOut]:
     return [ModelOut(**vars(m), is_free=m.is_free) for m in models if not free or m.is_free]
 
 
+def _too_many(message: str, retry_after: float) -> HTTPException:
+    return HTTPException(429, message, headers={"Retry-After": str(max(1, round(retry_after)))})
+
+
+async def _check_limits(request: Request, visitor: str) -> None:
+    """Cost guards: a full queue, the daily cap, then the visitor's hourly limit."""
+    settings = _settings(request)
+    service = _service(request)
+
+    if settings.max_waiting_games and service.waiting >= settings.max_waiting_games:
+        raise _too_many(
+            "The arena is busy: all game slots are taken and the queue is full. "
+            "Please try again in a few minutes.",
+            120,
+        )
+    if settings.games_per_day:
+        today = await service.store.count_since(start_of_day())
+        cap = settings.games_per_day
+        if today >= cap:
+            raise _too_many(
+                f"The arena has reached today's limit of {cap} game{'s' if cap != 1 else ''}. "
+                "Come back tomorrow!",
+                seconds_until_tomorrow(),
+            )
+    wait = request.app.state.visitor_limiter.retry_after(visitor)
+    if wait:
+        limit = settings.games_per_visitor_per_hour
+        raise _too_many(
+            f"You can start {limit} game{'s' if limit != 1 else ''} per hour. "
+            f"Please try again in {minutes_text(wait)}.",
+            wait,
+        )
+
+
 @router.post("/games", response_model=GameCreated, status_code=202)
 async def start_game(body: GameRequest, request: Request) -> GameCreated:
     settings = _settings(request)
@@ -88,6 +128,10 @@ async def start_game(body: GameRequest, request: Request) -> GameCreated:
     if max_moves > settings.max_moves_limit:
         raise HTTPException(422, f"max_moves can be at most {settings.max_moves_limit}.")
     default_effort = (public and public.reasoning_effort) or settings.reasoning_effort
+
+    visitor = request.client.host if request.client else "unknown"
+    await _check_limits(request, visitor)
+    request.app.state.visitor_limiter.hit(visitor)
 
     record = await _service(request).start(
         NewGame(
@@ -109,23 +153,33 @@ async def list_games(
     request: Request,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-) -> GamePage:
+) -> JSONResponse:
     games, total = await _service(request).store.list_games(limit=limit, offset=offset)
-    return GamePage(games=games, total=total)
+    return _without_costs(GamePage(games=games, total=total))
 
 
 @router.get("/games/{game_id}", response_model=GameDetail)
-async def get_game(game_id: str, request: Request) -> GameDetail:
+async def get_game(game_id: str, request: Request) -> JSONResponse:
     stored = await _service(request).store.get(game_id)
     if stored is None:
         raise HTTPException(404, "Game not found")
-    return GameDetail(status=stored.status, error=stored.error, game=stored.record)
+    return _without_costs(GameDetail(status=stored.status, error=stored.error, game=stored.record))
+
+
+@router.get("/leaderboard", response_model=list[LeaderboardRow])
+async def leaderboard(request: Request) -> list[LeaderboardRow]:
+    return build_leaderboard(await _service(request).store.finished_games())
+
+
+def _without_costs(body: BaseModel) -> JSONResponse:
+    """A response without costs: they're for the site owner (see `app.costs`)."""
+    return JSONResponse(strip_costs(body.model_dump(mode="json")))
 
 
 def _sse(event: Event) -> str:
     if event.type == "ping":
         return ": ping\n\n"  # a comment line: keeps proxies from closing an idle connection
-    return f"event: {event.type}\ndata: {json.dumps(event.data)}\n\n"
+    return f"event: {event.type}\ndata: {json.dumps(strip_costs(event.data))}\n\n"
 
 
 @router.get("/games/{game_id}/stream")

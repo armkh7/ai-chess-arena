@@ -26,7 +26,7 @@ export function MoveList(props: {
   }, [current, moves.length]);
 
   if (!moves.length) {
-    return <p className="p-4 text-sm text-zinc-500">No moves yet.</p>;
+    return <p className="p-4 text-sm text-ui-400">No moves yet.</p>;
   }
 
   const rows: [MoveRecord, MoveRecord | undefined][] = [];
@@ -60,7 +60,7 @@ function Row(props: {
   const { white, black, ...rest } = props;
   return (
     <>
-      <span className="py-1 pr-2 text-right text-zinc-600">{white.move_number}.</span>
+      <span className="py-1 pr-2 text-right text-ui-500">{white.move_number}.</span>
       <Cell move={white} {...rest} />
       {black ? <Cell move={black} {...rest} /> : <span />}
     </>
@@ -84,13 +84,13 @@ function Cell({
       onClick={onSelect && (() => onSelect(move.ply))}
       disabled={!onSelect}
       className={`flex items-center gap-1 rounded px-2 py-1 text-left transition ${
-        active ? "bg-amber-400/20 text-zinc-50" : "text-zinc-300 enabled:hover:bg-zinc-800"
+        active ? "bg-accent-400/20 text-ui-50" : "text-ui-300 enabled:hover:bg-ui-800"
       }`}
     >
       {move.san}
       {style?.glyph && label !== "best" && <span className={style.className}>{style.glyph}</span>}
       {retries > 0 && (
-        <span className="ml-auto text-[10px] text-red-400/80" title={`${retries} rejected tries`}>
+        <span className="ml-auto text-[11px] text-red-400/80" title={`${retries} rejected tries`}>
           ×{retries}
         </span>
       )}

@@ -21,11 +21,11 @@ class GameRequest(BaseModel):
 
 
 class ModelOut(BaseModel):
+    """A model visitors can pick. No prices: costs are for the site owner only."""
+
     id: str
     name: str
     context_length: int | None
-    prompt_price: float  # USD per token
-    completion_price: float
     is_free: bool
 
 

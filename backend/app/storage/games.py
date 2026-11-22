@@ -108,6 +108,24 @@ class GameStore:
             summaries = [GameSummary.model_validate(row, from_attributes=True) for row in rows]
         return summaries, total or 0
 
+    async def finished_games(self) -> list[GameRecord]:
+        """Every finished game with a result, oldest first (for the leaderboard)."""
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(GameRow.data)
+                .where(GameRow.status == GameStatus.FINISHED.value, GameRow.result != "*")
+                .order_by(GameRow.created_at)
+            )
+            return [GameRecord.model_validate(data) for data in rows]
+
+    async def count_since(self, since: datetime) -> int:
+        """Games started at or after `since` (for the daily cap)."""
+        async with self._sessions() as session:
+            count = await session.scalar(
+                select(func.count()).select_from(GameRow).where(GameRow.created_at >= since)
+            )
+        return count or 0
+
     async def mark_interrupted(self) -> int:
         """At startup: games left running by a previous server process can't resume."""
         active = [s.value for s in GameStatus if s.is_active]
