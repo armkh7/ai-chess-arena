@@ -171,7 +171,7 @@ export default function HowItWorksPage() {
 
       <section className="space-y-5">
         <SectionTitle>Inside the judge agent</SectionTitle>
-        <div className="space-y-4 rounded-2xl border border-agent-400/25 bg-agent-500/[0.05] p-5">
+        <div className="space-y-4 rounded-xl border border-ui-800 bg-ui-900/40 p-5">
           <p className="leading-relaxed text-ui-300">
             The judge is a LangChain agent: a reasoning model in a loop that decides which tool to
             call next, reads the result and continues until it has enough evidence. Every tool call
@@ -181,7 +181,7 @@ export default function HowItWorksPage() {
           <ul className="space-y-2">
             {TOOLS.map(([name, text]) => (
               <li key={name} className="flex flex-col gap-0.5 text-sm sm:flex-row sm:gap-3">
-                <code className="shrink-0 text-agent-300 sm:w-44">{name}()</code>
+                <code className="shrink-0 text-accent-400 sm:w-44">{name}()</code>
                 <span className="text-ui-400">{text}</span>
               </li>
             ))}
@@ -196,7 +196,7 @@ export default function HowItWorksPage() {
       <section className="space-y-5">
         <SectionTitle>Engineering notes</SectionTitle>
         {/* A plain list: the note's title, then its explanation, one per row */}
-        <dl className="divide-y divide-ui-800 border-y border-ui-800">
+        <dl className="divide-y divide-ui-800 border-t border-ui-800">
           {NOTES.map((note) => (
             <div key={note.title} className="grid gap-1 py-4 sm:grid-cols-[13rem_1fr] sm:gap-6">
               <dt className="font-medium">{note.title}</dt>
@@ -206,7 +206,7 @@ export default function HowItWorksPage() {
         </dl>
       </section>
 
-      <section className="flex flex-wrap items-center gap-4 border-t border-ui-800 pt-8">
+      <section className="flex flex-wrap items-center gap-4">
         <a
           href={REPO}
           target="_blank"
