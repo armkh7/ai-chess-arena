@@ -50,7 +50,8 @@ type Action =
   | { type: "analysis"; data: GameAnalysis; at: number }
   | { type: "judge_step"; data: JudgeStep; at: number }
   | { type: "judge"; data: JudgeResult; at: number }
-  | { type: "end"; data: GameEnd; at: number };
+  | { type: "end"; data: GameEnd; at: number }
+  | { type: "batch"; actions: Action[] };
 
 const initial: GameState = {
   connection: "connecting",
@@ -105,6 +106,8 @@ function reducer(state: GameState, action: Action): GameState {
       return { ...state, judge: action.data, judgeSteps: action.data.steps };
     case "end":
       return { ...state, end: action.data, status: action.data.status, waiting: null };
+    case "batch":
+      return action.actions.reduce(reducer, state);
   }
 }
 
@@ -124,19 +127,46 @@ export function useGameStream(id: string): GameState {
 
   useEffect(() => {
     const source = new EventSource(api.streamUrl(id));
-    source.onopen = () => dispatch({ type: "open" });
+
+    // The server first sends everything that already happened, then "synced", then live
+    // events. The history is collected and applied in one update, so a finished game opens
+    // on its final position instead of the board racing through every move. Live events after
+    // "synced" apply one by one. A finished game's history ends with "end", which also syncs.
+    let synced = false;
+    let backlog: Action[] = [];
+    const apply = (action: Action) => {
+      if (synced) dispatch(action);
+      else backlog.push(action);
+    };
+    const sync = () => {
+      synced = true;
+      const actions = backlog;
+      backlog = [];
+      dispatch({ type: "batch", actions });
+    };
+
+    source.onopen = () => {
+      // Also after a reconnect: the server sends the whole history again.
+      synced = false;
+      backlog = [];
+      dispatch({ type: "open" });
+    };
     for (const type of EVENTS) {
       source.addEventListener(type, (event) => {
         const data = JSON.parse((event as MessageEvent<string>).data);
-        dispatch({ type, data, at: Date.now() } as Action);
+        apply({ type, data, at: Date.now() } as Action);
       });
     }
+    source.addEventListener("synced", () => {
+      if (!synced) sync();
+    });
     source.addEventListener("end", (event) => {
-      dispatch({
+      apply({
         type: "end",
         data: JSON.parse((event as MessageEvent<string>).data),
         at: Date.now(),
       });
+      if (!synced) sync();
       source.close(); // otherwise the browser reconnects and replays the game
     });
     // A dropped connection reconnects by itself; CLOSED means it gave up (e.g. 404).

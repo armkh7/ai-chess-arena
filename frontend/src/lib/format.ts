@@ -1,4 +1,4 @@
-import type { Color, GameStatus, ModelInfo, MoveLabel } from "./types";
+import type { Color, GameStatus, MoveLabel } from "./types";
 
 /** "openai/gpt-oss-120b" -> provider "openai", name "gpt-oss-120b". */
 export function modelParts(id: string) {
@@ -27,23 +27,9 @@ export function whiteWinPercent(cp: number): number {
   return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * capped)) - 1);
 }
 
-/**
- * Rough cost of one player's side of a game. The 2026-11-22 benchmark averaged ~470 prompt
- * tokens a move (more as the move list grows) and 50-1,700 reply tokens depending on the model.
- */
-export function costPerGame(model: ModelInfo, moves: number): number {
-  return moves * (550 * model.prompt_price + 800 * model.completion_price);
-}
-
-export function formatCost(usd: number): string {
-  if (usd === 0) return "Free";
-  if (usd < 0.001) return "<$0.001";
-  return `$${usd.toFixed(usd < 0.1 ? 3 : 2)}`;
-}
-
 export const LABELS: Record<MoveLabel, { text: string; glyph: string; className: string }> = {
-  best: { text: "Best move", glyph: "★", className: "text-emerald-400" },
-  good: { text: "Good", glyph: "", className: "text-zinc-300" },
+  best: { text: "Best move", glyph: "", className: "text-emerald-400" }, // a Star icon is shown instead
+  good: { text: "Good", glyph: "", className: "text-ui-300" },
   inaccuracy: { text: "Inaccuracy", glyph: "?!", className: "text-yellow-400" },
   mistake: { text: "Mistake", glyph: "?", className: "text-orange-400" },
   blunder: { text: "Blunder", glyph: "??", className: "text-red-400" },
@@ -59,7 +45,7 @@ export const STATUS_TEXT: Record<GameStatus, string> = {
   interrupted: "Interrupted (server restarted)",
 };
 
-/** Why the game ended, in plain words. */
+/** Why the game ended, in plain words. Shown next to the result, so it doesn't repeat it. */
 export function endingText(termination: string | null, winner: Color | null): string {
   const loser = winner ? colorName(winner === "white" ? "black" : "white") : "A player";
   switch (termination) {
@@ -68,15 +54,15 @@ export function endingText(termination: string | null, winner: Color | null): st
     case "stalemate":
       return "Stalemate";
     case "insufficient_material":
-      return "Draw: not enough pieces left to mate";
+      return "Not enough pieces left to checkmate";
     case "threefold_repetition":
     case "fivefold_repetition":
-      return "Draw by repetition";
+      return "The same position came up three times";
     case "fifty_moves":
     case "seventyfive_moves":
-      return "Draw: 50 moves without a capture or pawn move";
+      return "50 moves without a capture or pawn move";
     case "move_limit":
-      return "Move limit reached: position about equal, draw";
+      return "Move limit reached, position about equal";
     case "adjudication":
       return "Move limit reached: Stockfish judged the position won";
     case "forfeit_illegal_moves":

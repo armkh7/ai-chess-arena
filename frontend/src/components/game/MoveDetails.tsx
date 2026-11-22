@@ -1,3 +1,4 @@
+import { Star, Timer } from "lucide-react";
 import { colorName, formatEval, formatSeconds, LABELS } from "@/lib/format";
 import type { Attempt, Color, MoveAnalysis, MoveRecord } from "@/lib/types";
 import type { Waiting } from "@/lib/useGameStream";
@@ -18,14 +19,18 @@ export function MoveDetails({ move, analysis }: { move: MoveRecord; analysis?: M
           {move.color === "white" ? "." : "..."} {move.san}
         </span>
         {label && (
-          <span className={`text-sm font-medium ${label.className}`}>
-            {label.glyph && `${label.glyph} `}
+          <span className={`inline-flex items-center gap-1 text-sm font-medium ${label.className}`}>
+            {analysis?.label === "best" ? (
+              <Star className="size-3.5" fill="currentColor" aria-hidden />
+            ) : (
+              label.glyph && `${label.glyph} `
+            )}
             {label.text}
           </span>
         )}
         {analysis && (
           <span
-            className="ml-auto font-mono text-sm text-zinc-400"
+            className="ml-auto font-mono text-sm text-ui-400"
             title="Stockfish evaluation after the move"
           >
             {formatEval(analysis.eval_after)}
@@ -34,23 +39,23 @@ export function MoveDetails({ move, analysis }: { move: MoveRecord; analysis?: M
       </div>
 
       {missed && (
-        <p className="text-sm text-zinc-400">
-          Stockfish preferred <span className="font-mono text-zinc-200">{analysis.best_san}</span>.
+        <p className="text-sm text-ui-400">
+          Stockfish preferred <span className="font-mono text-ui-200">{analysis.best_san}</span>.
         </p>
       )}
 
       {move.reasoning ? (
-        <blockquote className="border-l-2 border-amber-400/60 pl-3 leading-relaxed text-zinc-200">
+        <blockquote className="border-l-2 border-accent-400/60 pl-3 leading-relaxed text-ui-200">
           {move.reasoning}
         </blockquote>
       ) : (
-        <p className="text-sm italic text-zinc-500">No reasoning given.</p>
+        <p className="text-sm italic text-ui-400">No reasoning given.</p>
       )}
 
       {rejected.length > 0 && <RejectedTries attempts={rejected} />}
 
       {accepted && (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-ui-400">
           {colorName(move.color)} answered in {formatSeconds(accepted.latency_ms)}
           {accepted.completion_tokens !== null && ` · ${accepted.completion_tokens} tokens`}
         </p>
@@ -69,12 +74,12 @@ export function Thinking(props: {
   const { color, seconds, rejected, waiting } = props;
   return (
     <div className="space-y-3">
-      <p className="flex items-center gap-2 text-sm text-zinc-300">
-        <span className="size-2 animate-pulse rounded-full bg-amber-400" />
+      <p className="flex items-center gap-2 text-sm text-ui-300">
+        <span className="size-2 animate-pulse rounded-full bg-accent-400" />
         {colorName(color)} is thinking{seconds !== null && ` · ${seconds} s`}
       </p>
       {waiting && (
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-ui-400">
           The model&apos;s provider is busy: waiting {waiting.seconds} s, then trying again (retry{" "}
           {waiting.retry}).
         </p>
@@ -93,12 +98,16 @@ export function RejectedTries({
 }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{title}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-ui-400">{title}</p>
       <ul className="space-y-1 text-sm">
         {attempts.map((attempt, i) => (
-          <li key={i} className="flex gap-2 text-zinc-400">
+          <li key={i} className="flex gap-2 text-ui-400">
             <span className="shrink-0 font-mono text-red-400">
-              {attempt.timed_out ? "⏱" : (attempt.move_text ?? "—")}
+              {attempt.timed_out ? (
+                <Timer className="mt-0.5 size-4" aria-label="Too slow" />
+              ) : (
+                (attempt.move_text ?? "—")
+              )}
             </span>
             <span className="min-w-0 break-words">{attempt.error}</span>
           </li>

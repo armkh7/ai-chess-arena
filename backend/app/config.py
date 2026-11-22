@@ -62,6 +62,13 @@ class Settings(BaseSettings):
 
     # API
     max_concurrent_games: int = 3  # more games wait in a queue
+    # Cost guards for the public site (0 = no limit). Refused requests get HTTP 429.
+    max_waiting_games: int = 5  # queue length; beyond this, new games are refused
+    games_per_visitor_per_hour: int = 3  # per IP address
+    games_per_day: int = 50  # across the whole site, resets at midnight UTC
+    # One CSV line per finished game with what it cost (relative to backend/; empty = off).
+    # Visitors never see costs: the API strips them. Summary: `uv run arena costs`.
+    cost_log_file: str = "logs/costs.csv"
     max_moves_limit: int = 150  # highest max_moves a client may ask for
     cors_origins: list[str] = ["http://localhost:3000"]  # the frontend's address
     # The models visitors can pick (relative to backend/). Empty = every OpenRouter model.

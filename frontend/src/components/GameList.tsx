@@ -36,12 +36,12 @@ export function GameList({ limit = 20 }: { limit?: number }) {
   }, [limit]);
 
   if (error) return <p className="text-sm text-red-400">Couldn&apos;t load games: {error}</p>;
-  if (!page) return <p className="text-sm text-zinc-500">Loading games…</p>;
+  if (!page) return <p className="text-sm text-ui-400">Loading games…</p>;
   if (!page.games.length)
-    return <p className="text-sm text-zinc-500">No games yet. Start one above.</p>;
+    return <p className="text-sm text-ui-400">No games yet. Start one above.</p>;
 
   return (
-    <ul className="divide-y divide-zinc-800/80 overflow-hidden rounded-xl border border-zinc-800">
+    <ul className="divide-y divide-ui-800/80 overflow-hidden rounded-xl border border-ui-800">
       {page.games.map((game) => (
         <li key={game.id}>
           <GameRow game={game} />
@@ -57,12 +57,12 @@ function GameRow({ game }: { game: GameSummary }) {
   return (
     <Link
       href={`/games/${game.id}`}
-      className="flex items-center gap-4 px-4 py-3 transition hover:bg-zinc-900/70"
+      className="flex items-center gap-4 px-4 py-3 transition hover:bg-ui-900/70"
     >
       <div className="min-w-0 flex-1 space-y-1">
         <Player color="white" model={game.white_model} accuracy={game.white_accuracy} />
         <Player color="black" model={game.black_model} accuracy={game.black_accuracy} />
-        <p className="truncate text-xs text-zinc-500">
+        <p className="truncate text-xs text-ui-400">
           {ending || STATUS_TEXT[game.status]} · {Math.ceil(game.moves / 2)} moves ·{" "}
           {formatDate(game.created_at)}
         </p>
@@ -84,12 +84,12 @@ function Player({
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span
-        className={`size-2.5 shrink-0 rounded-full border border-zinc-500 ${color === "white" ? "bg-zinc-100" : "bg-zinc-950"}`}
+        className={`size-2.5 shrink-0 rounded-full border border-zinc-400 ${color === "white" ? "bg-white" : "bg-zinc-900"}`}
       />
       <ModelName id={model} />
       {accuracy !== null && (
         <span
-          className="ml-auto shrink-0 text-xs tabular-nums text-zinc-500"
+          className="ml-auto shrink-0 text-xs tabular-nums text-ui-400"
           title="Stockfish accuracy"
         >
           {accuracy.toFixed(1)}%
@@ -116,9 +116,9 @@ function Result({ game, active }: { game: GameSummary; active: boolean }) {
         ? ["*", "*"]
         : game.result.split("-");
   return (
-    <span className="flex items-center gap-1.5 rounded-md bg-zinc-800 px-2.5 py-1 text-sm font-semibold tabular-nums">
+    <span className="flex items-center gap-1.5 rounded-md bg-ui-800 px-2.5 py-1 text-sm font-semibold tabular-nums">
       <span>{white}</span>
-      <span className="text-zinc-500">–</span>
+      <span className="text-ui-400">–</span>
       <span>{black}</span>
     </span>
   );

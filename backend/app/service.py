@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from app.analysis.analyzer import analyze_record
 from app.analysis.engine import EngineNotFound, Evaluator
 from app.config import ReasoningEffort, Settings
+from app.costs import append_cost, log_path
 from app.game.models import Attempt, Color, GameRecord, JudgeStep, MoveRecord
 from app.game.players import Player
 from app.game.runner import GameRunner
@@ -49,12 +50,16 @@ class NewGame(BaseModel):
 
 
 def _end_event(record: GameRecord, status: GameStatus, error: str | None) -> dict[str, Any]:
+    """The last event. It also carries the final turn's failed tries (a forfeit or API error),
+    so the game page needs nothing but the stream."""
     return {
         "status": status.value,
         "result": record.result,
         "termination": record.termination.value if record.termination else None,
         "winner": record.winner.value if record.winner else None,
         "error": error or record.error,
+        "failed_color": record.failed_color.value if record.failed_color else None,
+        "failed_attempts": [a.model_dump(mode="json") for a in record.failed_attempts],
     }
 
 
@@ -103,6 +108,12 @@ class GameService:
         self._tasks: set[asyncio.Task[None]] = set()
         self.live: dict[str, GameChannel] = {}
 
+    @property
+    def waiting(self) -> int:
+        """Games in the queue: those beyond the free slots. (Counting tasks blocked on the
+        semaphore would miss a game started a moment ago that hasn't reached it yet.)"""
+        return max(0, len(self._tasks) - self.settings.max_concurrent_games)
+
     async def start(self, new: NewGame) -> GameRecord:
         record = GameRecord(
             white_model=new.white,
@@ -145,6 +156,16 @@ class GameService:
             }
         channel.publish("status", data)
 
+    async def _log_cost(self, record: GameRecord) -> None:
+        """One line in the owner's cost log. A failure here never affects the game."""
+        path = log_path(self.settings.cost_log_file)
+        if path is None:
+            return
+        try:
+            await asyncio.to_thread(append_cost, path, record)
+        except OSError:
+            log.exception("Couldn't write the cost of game %s to %s", record.id, path)
+
     async def _run(self, record: GameRecord, new: NewGame, channel: GameChannel) -> None:
         status, error = GameStatus.FINISHED, None
         try:
@@ -158,6 +179,8 @@ class GameService:
             status, error = GameStatus.ERROR, f"{type(exc).__name__}: {exc}"
         finally:
             await asyncio.shield(self.store.save(record, status, error))
+            if status is GameStatus.FINISHED and record.moves:
+                await self._log_cost(record)
             channel.publish("end", _end_event(record, status, error))
             channel.close()
             self.live.pop(record.id, None)

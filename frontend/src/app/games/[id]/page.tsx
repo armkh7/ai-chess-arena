@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Game" };
 // The id is only known at request time, so it's read inside Suspense (Cache Components).
 export default function GamePage({ params }: PageProps<"/games/[id]">) {
   return (
-    <Suspense fallback={<p className="text-zinc-500">Loading game…</p>}>
+    <Suspense fallback={<p className="text-ui-400">Loading game…</p>}>
       {params.then(({ id }) => (
         <GameView id={id} />
       ))}

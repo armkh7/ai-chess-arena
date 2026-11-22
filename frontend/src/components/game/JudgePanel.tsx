@@ -1,5 +1,19 @@
 "use client";
 
+import {
+  Brain,
+  CircleCheck,
+  CircleX,
+  ClipboardList,
+  FileCheck,
+  Grid3x3,
+  type LucideIcon,
+  ScrollText,
+  Scale,
+  Search,
+  TrendingDown,
+  Wrench,
+} from "lucide-react";
 import { useState } from "react";
 import { ModelName } from "@/components/ModelName";
 import type { Color, Grade, JudgeResult, JudgeStep, KeyMoment, PlayerVerdict } from "@/lib/types";
@@ -12,13 +26,13 @@ const GRADE_STYLE: Record<Grade, string> = {
   F: "bg-red-400/15 text-red-300 ring-red-400/40",
 };
 
-const TOOL_ICON: Record<string, string> = {
-  get_game_overview: "📋",
-  get_key_moments: "📈",
-  get_move_details: "🔍",
-  show_board: "♟",
-  get_moves: "📜",
-  submit_report: "📝",
+const TOOL_ICON: Record<string, LucideIcon> = {
+  get_game_overview: ClipboardList,
+  get_key_moments: TrendingDown,
+  get_move_details: Search,
+  show_board: Grid3x3,
+  get_moves: ScrollText,
+  submit_report: FileCheck,
 };
 
 /**
@@ -36,35 +50,35 @@ export function JudgePanel(props: {
   const report = judge?.report;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-violet-400/25 bg-gradient-to-b from-violet-500/[0.07] to-transparent">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-violet-400/15 px-5 py-3">
-        <span className="text-lg">⚖️</span>
+    <section className="overflow-hidden rounded-2xl border border-agent-400/25 bg-ui-900/40">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-agent-400/15 px-4 py-3 sm:px-5">
+        <Scale className="size-5 text-agent-300" aria-hidden />
         <h2 className="font-semibold">Judge agent</h2>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-ui-400">
           LangChain agent · {judge?.model ?? "reasoning model"} · reads the game with tools
         </span>
-        <span className="ml-auto text-xs text-zinc-400">
+        <span className="ml-auto text-xs text-ui-400">
           {judging ? (
-            <span className="flex items-center gap-2 text-violet-300">
-              <span className="size-2 animate-pulse rounded-full bg-violet-400" />
+            <span className="flex items-center gap-2 text-agent-300">
+              <span className="size-2 animate-pulse rounded-full bg-agent-400" />
               Reviewing the game…
             </span>
           ) : judge ? (
-            `${steps.length} steps · ${judge.seconds.toFixed(0)} s · $${judge.cost_usd.toFixed(4)}`
+            `${steps.length} steps · ${judge.seconds.toFixed(0)} s`
           ) : null}
         </span>
       </header>
 
       <div className="grid gap-0 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <Trace steps={steps} judging={judging} />
-        <div className="border-t border-violet-400/15 p-5 lg:border-t-0 lg:border-l">
+        <div className="border-t border-agent-400/15 p-4 sm:p-5 lg:border-t-0 lg:border-l">
           {report ? (
             <Report report={report} models={models} onShowMove={onShowMove} />
           ) : judge?.error ? (
             <p className="text-sm text-red-400">The judge couldn&apos;t finish: {judge.error}</p>
           ) : (
-            <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center text-sm text-zinc-500">
-              <span className="text-2xl">🧑‍⚖️</span>
+            <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center text-sm text-ui-400">
+              <Scale className="size-7 text-agent-400/70" aria-hidden />
               The judge is gathering evidence: it compares what each model said about its moves with
               what the moves did and what Stockfish thinks.
             </div>
@@ -76,10 +90,27 @@ export function JudgePanel(props: {
 }
 
 function Trace({ steps, judging }: { steps: JudgeStep[]; judging: boolean }) {
+  // Phones: once the judge is done, the trace folds away so the report isn't miles down.
+  // It's always open while the judge works, and always on wide screens.
+  const [open, setOpen] = useState(false);
+  const folded = !judging && !open && steps.length > 0;
   return (
-    <div className="p-5">
-      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">Agent trace</p>
-      <ol className="relative space-y-3 border-l border-zinc-800 pl-5">
+    // Its own tint down the full height: in the two-column layout the report is usually
+    // taller, and a fading panel background made the column look cut off.
+    <div className="bg-agent-500/[0.06] p-4 sm:p-5">
+      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-ui-400">Agent trace</p>
+      {folded && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full rounded-lg border border-agent-400/25 px-3 py-2 text-sm text-agent-200 transition hover:bg-agent-400/10 lg:hidden"
+        >
+          Show the agent&apos;s {steps.length} steps
+        </button>
+      )}
+      <ol
+        className={`relative space-y-3 border-l border-ui-800 pl-5 ${folded ? "hidden lg:block" : ""}`}
+      >
         {steps.map((step, i) =>
           step.kind === "thinking" ? (
             <Thought key={i} text={step.text} />
@@ -88,12 +119,12 @@ function Trace({ steps, judging }: { steps: JudgeStep[]; judging: boolean }) {
           ),
         )}
         {judging && (
-          <li className="relative text-sm text-violet-300">
-            <Dot className="animate-pulse bg-violet-400" />
+          <li className="relative text-sm text-agent-300">
+            <Dot className="animate-pulse bg-agent-400" />
             thinking…
           </li>
         )}
-        {!judging && !steps.length && <li className="text-sm text-zinc-500">No steps.</li>}
+        {!judging && !steps.length && <li className="text-sm text-ui-400">No steps.</li>}
       </ol>
     </div>
   );
@@ -104,14 +135,14 @@ function Thought({ text }: { text: string }) {
   const long = text.length > 220;
   return (
     <li className="relative">
-      <Dot className="bg-zinc-600" />
+      <Dot className="bg-ui-600" />
       <button
         type="button"
         onClick={() => long && setOpen((o) => !o)}
-        className={`text-left text-sm italic leading-relaxed text-zinc-400 ${long ? "cursor-pointer hover:text-zinc-300" : "cursor-default"}`}
+        className={`text-left text-sm italic leading-relaxed text-ui-400 ${long ? "cursor-pointer hover:text-ui-300" : "cursor-default"}`}
         title={long ? (open ? "Show less" : "Show the full thought") : undefined}
       >
-        <span className="mr-1 not-italic">💭</span>
+        <Brain className="mr-1.5 inline size-4 -translate-y-px text-ui-400" aria-hidden />
         {open || !long ? text : `${text.slice(0, 220).trimEnd()}…`}
       </button>
     </li>
@@ -119,15 +150,16 @@ function Thought({ text }: { text: string }) {
 }
 
 function ToolCall({ step }: { step: JudgeStep }) {
+  const Icon = TOOL_ICON[step.tool ?? ""] ?? Wrench;
   return (
     <li className="relative">
-      <Dot className="bg-violet-400" />
-      <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-        <span>{TOOL_ICON[step.tool ?? ""] ?? "🔧"}</span>
-        <span className="font-medium text-zinc-100">{step.title}</span>
-        <code className="text-[11px] text-violet-300/70">{step.tool}()</code>
+      <Dot className="bg-agent-400" />
+      <p className="flex flex-wrap items-center gap-x-2 text-sm">
+        <Icon className="size-4 shrink-0 text-agent-300" aria-hidden />
+        <span className="font-medium text-ui-100">{step.title}</span>
+        <code className="text-[11px] text-agent-300/70">{step.tool}()</code>
       </p>
-      {step.text && <p className="mt-0.5 text-sm text-zinc-400">{step.text}</p>}
+      {step.text && <p className="mt-0.5 text-sm text-ui-400">{step.text}</p>}
     </li>
   );
 }
@@ -135,7 +167,7 @@ function ToolCall({ step }: { step: JudgeStep }) {
 function Dot({ className }: { className: string }) {
   return (
     <span
-      className={`absolute top-1.5 -left-[25px] size-2 rounded-full ring-4 ring-zinc-950 ${className}`}
+      className={`absolute top-1.5 -left-[25px] size-2 rounded-full ring-4 ring-ui-950 ${className}`}
     />
   );
 }
@@ -149,12 +181,14 @@ function Report(props: {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="text-xl font-semibold leading-snug tracking-tight">{report.headline}</h3>
-        <p className="leading-relaxed text-zinc-300">{report.summary}</p>
+        <h3 className="text-lg font-semibold leading-snug tracking-tight sm:text-xl">
+          {report.headline}
+        </h3>
+        <p className="leading-relaxed text-ui-300">{report.summary}</p>
       </div>
 
       <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Key moments</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-ui-400">Key moments</p>
         {report.key_moments.map((moment) => (
           <Moment key={moment.ply} moment={moment} onShowMove={onShowMove} />
         ))}
@@ -170,29 +204,30 @@ function Report(props: {
 
 function Moment({ moment, onShowMove }: { moment: KeyMoment; onShowMove: (ply: number) => void }) {
   return (
-    <div className="space-y-1.5 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+    <div className="space-y-1.5 rounded-lg border border-ui-800 bg-ui-900/50 p-3">
       <div className="flex items-baseline gap-3">
         <p className="font-medium">{moment.title}</p>
         <button
           type="button"
           onClick={() => onShowMove(moment.ply)}
-          className="ml-auto shrink-0 text-xs text-amber-400 hover:underline"
+          className="ml-auto shrink-0 text-xs text-accent-400 hover:underline"
         >
           Show on board
         </button>
       </div>
-      <p className="text-sm leading-relaxed text-zinc-300">{moment.what_happened}</p>
-      <p className="flex gap-2 text-sm leading-relaxed text-zinc-400">
-        <span
-          className={`shrink-0 font-semibold ${moment.reasoning_matched ? "text-emerald-400" : "text-red-400"}`}
-          title={
-            moment.reasoning_matched
-              ? "The explanation matched the move"
-              : "The explanation didn't match the move"
-          }
-        >
-          {moment.reasoning_matched ? "✓" : "✗"}
-        </span>
+      <p className="text-sm leading-relaxed text-ui-300">{moment.what_happened}</p>
+      <p className="flex gap-2 text-sm leading-relaxed text-ui-400">
+        {moment.reasoning_matched ? (
+          <CircleCheck
+            className="mt-0.5 size-4 shrink-0 text-emerald-400"
+            aria-label="The explanation matched the move"
+          />
+        ) : (
+          <CircleX
+            className="mt-0.5 size-4 shrink-0 text-red-400"
+            aria-label="The explanation didn't match the move"
+          />
+        )}
         {moment.reasoning_check}
       </p>
     </div>
@@ -209,7 +244,7 @@ function Verdict({
   verdict: PlayerVerdict;
 }) {
   return (
-    <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+    <div className="space-y-2 rounded-lg border border-ui-800 bg-ui-900/50 p-3">
       <div className="flex items-center gap-3">
         <span
           className={`grid size-10 shrink-0 place-items-center rounded-lg text-xl font-bold ring-1 ${GRADE_STYLE[verdict.grade]}`}
@@ -217,7 +252,7 @@ function Verdict({
           {verdict.grade}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-zinc-500">{color === "white" ? "White" : "Black"}</p>
+          <p className="text-xs text-ui-400">{color === "white" ? "White" : "Black"}</p>
           <ModelName id={model} className="max-w-full" />
         </div>
       </div>
@@ -230,8 +265,8 @@ function Verdict({
 
 function Line({ label, text }: { label: string; text: string }) {
   return (
-    <p className="text-sm leading-relaxed text-zinc-400">
-      <span className="font-medium text-zinc-300">{label}: </span>
+    <p className="text-sm leading-relaxed text-ui-400">
+      <span className="font-medium text-ui-300">{label}: </span>
       {text}
     </p>
   );

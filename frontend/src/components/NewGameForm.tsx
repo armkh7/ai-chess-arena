@@ -1,14 +1,11 @@
 "use client";
 
+import { Shuffle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { ModelName } from "@/components/ModelName";
 import { api } from "@/lib/api";
-import { costPerGame, formatCost } from "@/lib/format";
 import type { Color, ModelInfo } from "@/lib/types";
-
-// Games play to the end; a typical one is 40-60 moves per side. Only used for the estimate.
-const TYPICAL_MOVES = 50;
 
 export function NewGameForm() {
   const router = useRouter();
@@ -16,6 +13,8 @@ export function NewGameForm() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [white, setWhite] = useState("");
   const [black, setBlack] = useState("");
+  // On phones one side's list shows at a time; desktop shows both columns.
+  const [side, setSide] = useState<Color>("white");
   // Pending until the game page has opened. Plain state would stay "Starting…" when you come
   // back, because Next keeps a page's state while you're on another page.
   const [starting, startTransition] = useTransition();
@@ -65,21 +64,44 @@ export function NewGameForm() {
     return <Notice>Loading models…</Notice>;
   }
 
-  const byId = new Map(models.map((m) => [m.id, m]));
-  const cost = [white, black].reduce((sum, id) => {
-    const model = byId.get(id);
-    return model ? sum + costPerGame(model, TYPICAL_MOVES) : sum;
-  }, 0);
-
   return (
-    <section className="space-y-6 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+    <section className="space-y-5 rounded-2xl border border-ui-800 bg-ui-900/40 p-4 sm:space-y-6 sm:p-6">
+      {/* Phones: pick one side at a time */}
+      <div className="grid grid-cols-2 gap-2 md:hidden" role="tablist">
+        {(["white", "black"] as const).map((color) => (
+          <button
+            key={color}
+            type="button"
+            role="tab"
+            aria-selected={side === color}
+            onClick={() => setSide(color)}
+            className={`min-w-0 rounded-lg border px-3 py-2 text-left transition ${
+              side === color ? "border-accent-400/70 bg-accent-400/10" : "border-ui-800"
+            }`}
+          >
+            <span className="flex items-center gap-2 text-xs font-medium text-ui-400">
+              <SideDot color={color} />
+              {color === "white" ? "White" : "Black"}
+            </span>
+            <ModelName
+              id={color === "white" ? white : black}
+              className="mt-0.5 max-w-full text-sm"
+            />
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2">
         <ModelColumn
           color="white"
           models={models}
           selected={white}
           taken={black}
-          onSelect={setWhite}
+          onSelect={(id) => {
+            setWhite(id);
+            setSide("black"); // phones: White is picked, now pick Black
+          }}
+          className={side === "white" ? "" : "hidden md:block"}
         />
         <ModelColumn
           color="black"
@@ -87,39 +109,50 @@ export function NewGameForm() {
           selected={black}
           taken={white}
           onSelect={setBlack}
+          className={side === "black" ? "" : "hidden md:block"}
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-4 border-t border-zinc-800 pt-5">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-ui-800 pt-5">
         <button
           type="button"
           onClick={randomMatchup}
-          className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-50"
+          className="inline-flex items-center gap-2 rounded-lg border border-ui-700 px-3 py-2 text-sm text-ui-300 transition hover:border-ui-500 hover:text-ui-50"
         >
+          <Shuffle className="size-4" aria-hidden />
           Random matchup
         </button>
-
-        <div className="ml-auto flex items-center gap-4">
-          <p className="text-sm text-zinc-400">
-            Estimated cost <span className="font-medium text-zinc-200">{formatCost(cost)}</span>
-          </p>
-          <button
-            type="button"
-            onClick={start}
-            disabled={starting || !white || !black || white === black}
-            className="rounded-lg bg-amber-400 px-5 py-2.5 font-semibold text-zinc-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {starting ? "Starting…" : "Start game"}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={start}
+          disabled={starting || !white || !black || white === black}
+          className="w-full rounded-lg bg-accent-400 px-5 py-3 font-semibold text-ui-950 transition hover:bg-accent-300 disabled:cursor-not-allowed disabled:opacity-50 sm:ml-auto sm:w-auto sm:py-2.5"
+        >
+          {starting ? "Starting…" : "Start game"}
+        </button>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      <p className="text-xs text-zinc-500">
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-accent-400/30 bg-accent-400/10 px-4 py-3 text-sm text-accent-200"
+        >
+          {error}
+        </p>
+      )}
+      <p className="text-xs leading-relaxed text-ui-400">
         Games play until checkmate or a draw, usually 10–20 minutes. Each move has a 30-second
         limit, and a model that keeps making illegal moves or running out of time loses.
       </p>
     </section>
+  );
+}
+
+function SideDot({ color }: { color: Color }) {
+  return (
+    <span
+      className={`size-3 shrink-0 rounded-full border border-zinc-400 ${color === "white" ? "bg-white" : "bg-zinc-900"}`}
+    />
   );
 }
 
@@ -129,14 +162,13 @@ function ModelColumn(props: {
   selected: string;
   taken: string; // the other side's model: a model can't play itself
   onSelect: (id: string) => void;
+  className?: string;
 }) {
-  const { color, models, selected, taken, onSelect } = props;
+  const { color, models, selected, taken, onSelect, className = "" } = props;
   return (
-    <fieldset className="space-y-2">
-      <legend className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-300">
-        <span
-          className={`size-3 rounded-full border border-zinc-500 ${color === "white" ? "bg-zinc-100" : "bg-zinc-950"}`}
-        />
+    <fieldset className={`min-w-0 space-y-2 ${className}`}>
+      <legend className="mb-2 hidden items-center gap-2 text-sm font-medium text-ui-300 md:flex">
+        <SideDot color={color} />
         {color === "white" ? "White" : "Black"}
       </legend>
       {models.map((model) => {
@@ -154,16 +186,11 @@ function ModelColumn(props: {
             }
             className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-35 ${
               active
-                ? "border-amber-400/70 bg-amber-400/10"
-                : "border-zinc-800 bg-zinc-900/60 enabled:hover:border-zinc-600"
+                ? "border-accent-400/70 bg-accent-400/10"
+                : "border-ui-800 bg-ui-900/60 enabled:hover:border-ui-600"
             }`}
           >
             <ModelName id={model.id} />
-            {!model.is_free && (
-              <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                ~{formatCost(costPerGame(model, TYPICAL_MOVES))}
-              </span>
-            )}
           </button>
         );
       })}
@@ -173,8 +200,6 @@ function ModelColumn(props: {
 
 function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 text-zinc-400">
-      {children}
-    </div>
+    <div className="rounded-2xl border border-ui-800 bg-ui-900/40 p-6 text-ui-400">{children}</div>
   );
 }

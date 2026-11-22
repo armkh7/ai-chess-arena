@@ -16,6 +16,7 @@ from app.analysis.analyzer import analyze_record
 from app.analysis.engine import EngineNotFound, Stockfish
 from app.analysis.metrics import format_eval
 from app.config import Settings, get_settings
+from app.costs import log_path, summarize
 from app.game.models import (
     Attempt,
     Color,
@@ -339,6 +340,41 @@ def judge(
         console.print(f"\n[bold]{color}: {verdict.grade}[/]  {escape(verdict.reasoning_quality)}")
     json_path, _ = save_game(record, game.parent)
     console.print(f"\nUpdated: {json_path}")
+
+
+@app.command()
+def costs(
+    log: Path | None = typer.Option(
+        None, "--log", help="The cost log (default: COST_LOG_FILE, logs/costs.csv)."
+    ),
+) -> None:
+    """What the site's games have cost: today, this month, in total, per model and the judge."""
+    path = log or log_path(get_settings().cost_log_file)
+    if path is None or not path.exists():
+        console.print(f"No cost log yet ({path}). It's written as API games finish.")
+        return
+    summary = summarize(path)
+    table = Table(title=f"Costs from {path}", title_justify="left")
+    table.add_column("")
+    table.add_column("Games", justify="right")
+    table.add_column("USD", justify="right")
+    for label, spend in (
+        ("Today (UTC)", summary.today),
+        ("This month", summary.this_month),
+        ("All time", summary.total),
+        ("  of which the judge", summary.judge),
+    ):
+        table.add_row(label, str(spend.games), f"${spend.usd:.4f}")
+    console.print(table)
+
+    models = Table(title="Players (all time)", title_justify="left")
+    for column in ("Model", "Games", "USD", "Per game"):
+        models.add_column(column, justify="left" if column == "Model" else "right")
+    for model, spend in sorted(summary.by_model.items(), key=lambda kv: -kv[1].usd):
+        models.add_row(
+            escape(model), str(spend.games), f"${spend.usd:.4f}", f"${spend.usd / spend.games:.4f}"
+        )
+    console.print(models)
 
 
 def _read_models(models: list[str] | None, models_file: Path | None) -> list[str]:
