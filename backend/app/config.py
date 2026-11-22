@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     max_concurrent_games: int = 3  # more games wait in a queue
     max_moves_limit: int = 100  # highest max_moves a client may ask for
     cors_origins: list[str] = ["http://localhost:3000"]  # the frontend's address
+    # The models visitors can pick (relative to backend/). Empty = every OpenRouter model.
+    public_models_file: str = "public_models.toml"
 
 
 @lru_cache

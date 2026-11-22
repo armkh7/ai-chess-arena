@@ -1,6 +1,7 @@
 """Endpoints.
 
-GET  /models                 models on OpenRouter, with prices (cached for 10 minutes)
+GET  /models                 models visitors can pick (`public_models.toml`), with OpenRouter
+                             prices (cached for 10 minutes)
 POST /games                  start a game; returns at once, the game plays in the background
 GET  /games                  finished and running games, newest first
 GET  /games/{id}             one game with every move, attempt and the analysis
@@ -18,6 +19,7 @@ from app.api.schemas import GameCreated, GameDetail, GamePage, GameRequest, Mode
 from app.config import Settings
 from app.live import Event
 from app.llm.openrouter import ModelInfo
+from app.public_models import PublicModels
 from app.service import GameService, NewGame, replay_events
 
 router = APIRouter()
@@ -49,22 +51,41 @@ def _settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
+def _public(request: Request) -> PublicModels | None:
+    return request.app.state.public_models
+
+
+async def _available_models(request: Request) -> list[ModelInfo]:
+    """The site's models in their listed order, or every OpenRouter model if there's no list.
+
+    A listed model that OpenRouter no longer offers is left out.
+    """
+    models = await request.app.state.catalog.get()
+    public = _public(request)
+    if public is None:
+        return models
+    by_id = {m.id: m for m in models}
+    return [by_id[model_id] for model_id in public.models if model_id in by_id]
+
+
 @router.get("/models", response_model=list[ModelOut])
 async def list_models(request: Request, free: bool = False) -> list[ModelOut]:
-    models = await request.app.state.catalog.get()
+    models = await _available_models(request)
     return [ModelOut(**vars(m), is_free=m.is_free) for m in models if not free or m.is_free]
 
 
 @router.post("/games", response_model=GameCreated, status_code=202)
 async def start_game(body: GameRequest, request: Request) -> GameCreated:
     settings = _settings(request)
-    known = {m.id for m in await request.app.state.catalog.get()}
-    unknown = [m for m in (body.white, body.black) if m not in known]
+    public = _public(request)
+    available = {m.id for m in await _available_models(request)}
+    unknown = [m for m in (body.white, body.black) if m not in available]
     if unknown:
-        raise HTTPException(422, f"Unknown model(s): {', '.join(unknown)}. See GET /models.")
+        raise HTTPException(422, f"Model(s) not available: {', '.join(unknown)}. See GET /models.")
     max_moves = body.max_moves or settings.max_full_moves
     if max_moves > settings.max_moves_limit:
         raise HTTPException(422, f"max_moves can be at most {settings.max_moves_limit}.")
+    default_effort = (public and public.reasoning_effort) or settings.reasoning_effort
 
     record = await _service(request).start(
         NewGame(
@@ -72,7 +93,7 @@ async def start_game(body: GameRequest, request: Request) -> GameCreated:
             black=body.black,
             max_moves=max_moves,
             show_legal_moves=body.show_legal_moves,
-            reasoning_effort=body.reasoning_effort or settings.reasoning_effort,
+            reasoning_effort=body.reasoning_effort or default_effort,
             move_time_limit=body.move_time_limit or settings.move_time_limit_seconds or None,
             analysis=body.analysis,
         )

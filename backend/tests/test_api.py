@@ -66,6 +66,7 @@ async def api():
         move_time_limit_seconds=0,
         max_full_moves=20,
         max_moves_limit=50,
+        public_models_file="",  # every model in MODELS; the site's list has its own tests
     )
 
     def make_player(model, effort, on_rate_limit):
