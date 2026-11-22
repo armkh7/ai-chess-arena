@@ -67,6 +67,7 @@ async def api():
         max_full_moves=20,
         max_moves_limit=50,
         public_models_file="",  # every model in MODELS; the site's list has its own tests
+        judge_enabled=False,  # never call a real model; the judge has its own tests
     )
 
     def make_player(model, effort, on_rate_limit):
@@ -167,6 +168,12 @@ async def test_unknown_model_is_rejected(api):
     resp = await api.post("/games", json={"white": "nope/model", "black": "b/paid"})
     assert resp.status_code == 422
     assert "nope/model" in resp.json()["detail"]
+
+
+async def test_a_model_cant_play_itself(api):
+    resp = await api.post("/games", json={"white": "b/paid", "black": "b/paid"})
+    assert resp.status_code == 422
+    assert "different models" in resp.json()["detail"]
 
 
 async def test_max_moves_is_capped(api):

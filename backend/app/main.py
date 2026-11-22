@@ -11,9 +11,10 @@ from app.analysis.engine import Stockfish
 from app.api.routes import ModelCatalog, ModelSource, router
 from app.config import ReasoningEffort, Settings, get_settings
 from app.game.players import LLMPlayer
+from app.judge.agent import LangChainJudge
 from app.llm.openrouter import OnRateLimit, OpenRouterClient, fetch_models
 from app.public_models import load_public_models
-from app.service import EvaluatorFactory, GameService, PlayerFactory
+from app.service import EvaluatorFactory, GameService, JudgeFactory, PlayerFactory
 from app.storage.db import create_tables, make_engine, make_sessions
 from app.storage.games import GameStore
 
@@ -26,9 +27,13 @@ def create_app(
     make_player: PlayerFactory | None = None,
     make_evaluator: EvaluatorFactory | None = None,
     model_source: ModelSource | None = None,
+    make_judge: JudgeFactory | None = None,
 ) -> FastAPI:
-    """Build the app. Tests swap in scripted players, a fake engine and a fixed model list."""
+    """Build the app. Tests swap in scripted players, a fake engine, a fixed model list and a
+    scripted judge."""
     settings = settings or get_settings()
+    if make_judge is None and settings.judge_enabled and settings.openrouter_api_key:
+        make_judge = lambda: LangChainJudge.from_settings(settings)  # noqa: E731
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -65,6 +70,7 @@ def create_app(
             settings,
             player_factory,
             make_evaluator or (lambda: Stockfish.from_settings(settings)),
+            make_judge,
         )
         try:
             yield

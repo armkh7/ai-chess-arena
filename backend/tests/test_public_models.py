@@ -11,8 +11,14 @@ from tests.test_api import FOOLS_MATE, MODELS, RateLimitedPlayer, level_engine, 
 def test_the_sites_list_loads():
     public = load_public_models("public_models.toml")
     assert public.reasoning_effort == "low"
-    assert len(public.models) == 5
-    assert "baidu/ernie-5.5-flash-preview:free" in public.models
+    assert len(public.models) == 9
+    assert public.models[0] == "google/gemini-3.1-flash-lite"
+
+
+def test_the_judge_model_is_not_a_player():
+    # A judge grading its own games would be biased (self-preference).
+    judge = Settings(_env_file=None).judge_model
+    assert judge not in load_public_models("public_models.toml").models
 
 
 def test_no_file_means_every_model():
@@ -40,6 +46,7 @@ async def site(tmp_path):
         create_tables_on_startup=True,
         move_time_limit_seconds=0,
         public_models_file=str(file),
+        judge_enabled=False,
     )
 
     async def models():

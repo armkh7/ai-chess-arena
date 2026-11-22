@@ -1,7 +1,7 @@
 # AI Chess Arena
 
 Pick any two AI language models and watch them play chess against each other.
-Each model explains its thinking as it plays, and after the game a chess engine grades every move: who played more accurately, where the blunders were, and what the best move would have been.
+Each model explains its thinking as it plays. After the game, a chess engine grades every move, and an AI judge agent investigates the game and writes a report: what decided it, and whether each model's explanations matched what it actually played.
 
 ## How a game works
 
@@ -12,7 +12,7 @@ Each model explains its thinking as it plays, and after the game a chess engine 
 - Every answer, its cost and its response time is recorded.
 - Games are played live: you can watch each move and its explanation the moment it's made, and every game is saved so it can be replayed later.
 
-A game ends on checkmate, stalemate, a draw by the rules of chess, a forfeit, a loss on time, or when the move limit is reached.
+Games are played to the end: checkmate, stalemate, a draw by the rules of chess, a forfeit or a loss on time. A very high move limit exists only as a safety net.
 
 ## Move analysis
 
@@ -22,6 +22,12 @@ After the game, the [Stockfish](https://stockfishchess.org) chess engine reviews
 - **Accuracy:** a score from 0 to 100 for each player. Blunders weigh more than good moves.
 - **Best moves:** for every mistake, the move the engine would have played instead.
 
-If a game reaches the move limit, the side the engine sees as clearly winning is declared the winner. Otherwise the game is a draw.
+If a game ever reaches the safety move limit, the side the engine sees as clearly winning is declared the winner. Otherwise the game is a draw.
 
-Every game can be exported in the standard chess format (PGN), with each model's explanations and the engine's verdicts as comments, so it can be replayed in any chess app.
+## The judge agent
+
+When the engine is done, a judge agent (a reasoning AI model) reviews the game the way a chess commentator would. It isn't handed a summary: it investigates on its own, choosing which tools to use, such as looking up the turning points, reading what a model said about a move, or looking at the board at any moment.
+
+Its main question is whether each model's explanations were true. Models often describe threats or plans that aren't on the board, and the judge points those out. It then writes a short report with a headline, the story of the game, its key moments and a grade from A to F for each player.
+
+You can watch the judge work: every thought and every step it takes appears on the page as it happens, and stays with the game for later replays.

@@ -2,7 +2,8 @@
 
 `start()` saves a new game and returns at once; the game plays in an asyncio task. Every move
 is saved to the database and published to the game's live channel, then Stockfish analyzes
-the finished game. At most `max_concurrent` games play at the same time; the rest wait.
+the finished game and the judge agent writes its report, each of its steps published live.
+At most `max_concurrent` games play at the same time; the rest wait.
 """
 
 import asyncio
@@ -16,9 +17,10 @@ from pydantic import BaseModel
 from app.analysis.analyzer import analyze_record
 from app.analysis.engine import EngineNotFound, Evaluator
 from app.config import ReasoningEffort, Settings
-from app.game.models import Attempt, Color, GameRecord, MoveRecord
+from app.game.models import Attempt, Color, GameRecord, JudgeStep, MoveRecord
 from app.game.players import Player
 from app.game.runner import GameRunner
+from app.judge.agent import Judge
 from app.live import GameChannel
 from app.llm.openrouter import OnRateLimit
 from app.storage.games import GameStatus, GameStore
@@ -29,6 +31,8 @@ log = logging.getLogger(__name__)
 PlayerFactory = Callable[[str, ReasoningEffort | None, OnRateLimit], Player]
 # A fresh engine per analysis, e.g. `lambda: Stockfish(...)`. None = no analysis.
 EvaluatorFactory = Callable[[], AbstractAsyncContextManager[Evaluator]]
+# The judge agent for one game. None = no judging. Tests pass a scripted judge.
+JudgeFactory = Callable[[], Judge]
 
 
 class NewGame(BaseModel):
@@ -41,6 +45,7 @@ class NewGame(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
     move_time_limit: float | None = None
     analysis: bool = True
+    judge: bool = True  # needs the analysis: the judge reads Stockfish's verdicts
 
 
 def _end_event(record: GameRecord, status: GameStatus, error: str | None) -> dict[str, Any]:
@@ -73,6 +78,9 @@ def replay_events(record: GameRecord, status: GameStatus, error: str | None) -> 
     events += [("move", move.model_dump(mode="json")) for move in record.moves]
     if record.analysis:
         events.append(("analysis", record.analysis.model_dump(mode="json")))
+    if record.judge:
+        events += [("judge_step", step.model_dump(mode="json")) for step in record.judge.steps]
+        events.append(("judge", record.judge.model_dump(mode="json")))
     events.append(("end", _end_event(record, status, error)))
     return events
 
@@ -84,11 +92,13 @@ class GameService:
         settings: Settings,
         make_player: PlayerFactory,
         make_evaluator: EvaluatorFactory | None,
+        make_judge: JudgeFactory | None = None,
     ) -> None:
         self.store = store
         self.settings = settings
         self._make_player = make_player
         self._make_evaluator = make_evaluator
+        self._make_judge = make_judge
         self._slots = asyncio.Semaphore(settings.max_concurrent_games)
         self._tasks: set[asyncio.Task[None]] = set()
         self.live: dict[str, GameChannel] = {}
@@ -126,7 +136,14 @@ class GameService:
         self, record: GameRecord, channel: GameChannel, status: GameStatus
     ) -> None:
         await self.store.save(record, status)
-        channel.publish("status", {"status": status.value})
+        data: dict[str, Any] = {"status": status.value}
+        if record.termination:  # game over: show the result while Stockfish and the judge work
+            data |= {
+                "result": record.result,
+                "termination": record.termination.value,
+                "winner": record.winner.value if record.winner else None,
+            }
+        channel.publish("status", data)
 
     async def _run(self, record: GameRecord, new: NewGame, channel: GameChannel) -> None:
         status, error = GameStatus.FINISHED, None
@@ -181,3 +198,13 @@ class GameService:
                 log.warning("Stockfish not found: game %s saved without analysis", record.id)
             if record.analysis:
                 channel.publish("analysis", record.analysis.model_dump(mode="json"))
+
+        if new.judge and record.analysis and self._make_judge:
+            await self._set_status(record, channel, GameStatus.JUDGING)
+
+            def on_step(step: JudgeStep) -> None:
+                channel.publish("judge_step", step.model_dump(mode="json"))
+
+            # Never raises: a failed judge is recorded in `record.judge.error`.
+            record.judge = await self._make_judge().judge(record, on_step)
+            channel.publish("judge", record.judge.model_dump(mode="json"))

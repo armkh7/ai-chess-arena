@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     rate_limit_wait_seconds: float = 15.0
 
     # Game rules
-    max_full_moves: int = 60  # after this many moves per side the game stops
+    # Games play until they end on the board (mate, draw, forfeit). This is only a safety cap
+    # that real games shouldn't reach; if one does, Stockfish adjudicates the final position.
+    max_full_moves: int = 150
     max_illegal_retries: int = 3  # extra tries after an illegal move before forfeiting
     # Seconds per reply, like a chess clock. Too slow counts as a failed try (rate-limit waits
     # don't count). 0 = no limit.
@@ -47,13 +49,20 @@ class Settings(BaseSettings):
     # At the move limit, a side ahead by at least this many centipawns (300 = 3 pawns) wins.
     adjudicate_min_cp: int = 300
 
+    # Judge agent (LangChain): reviews each finished game, after Stockfish, and grades both
+    # players. A reasoning model with tool calling, through OpenRouter. ~$0.005 per game.
+    judge_enabled: bool = True
+    judge_model: str = "anthropic/claude-haiku-5.5"
+    judge_reasoning_effort: ReasoningEffort | None = "medium"
+    judge_timeout_seconds: float = 240.0
+
     # Database: set DATABASE_URL in .env (see .env.example). Only the API needs it.
     database_url: str | None = None
     create_tables_on_startup: bool = False  # tests only; real databases use Alembic migrations
 
     # API
     max_concurrent_games: int = 3  # more games wait in a queue
-    max_moves_limit: int = 100  # highest max_moves a client may ask for
+    max_moves_limit: int = 150  # highest max_moves a client may ask for
     cors_origins: list[str] = ["http://localhost:3000"]  # the frontend's address
     # The models visitors can pick (relative to backend/). Empty = every OpenRouter model.
     public_models_file: str = "public_models.toml"

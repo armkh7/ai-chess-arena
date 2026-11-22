@@ -82,6 +82,8 @@ async def start_game(body: GameRequest, request: Request) -> GameCreated:
     unknown = [m for m in (body.white, body.black) if m not in available]
     if unknown:
         raise HTTPException(422, f"Model(s) not available: {', '.join(unknown)}. See GET /models.")
+    if body.white == body.black:
+        raise HTTPException(422, "Pick two different models: a model can't play itself.")
     max_moves = body.max_moves or settings.max_full_moves
     if max_moves > settings.max_moves_limit:
         raise HTTPException(422, f"max_moves can be at most {settings.max_moves_limit}.")
@@ -96,6 +98,7 @@ async def start_game(body: GameRequest, request: Request) -> GameCreated:
             reasoning_effort=body.reasoning_effort or default_effort,
             move_time_limit=body.move_time_limit or settings.move_time_limit_seconds or None,
             analysis=body.analysis,
+            judge=body.judge,
         )
     )
     return GameCreated(id=record.id, status="queued", stream_url=f"/games/{record.id}/stream")

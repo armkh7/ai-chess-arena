@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -108,6 +109,64 @@ class GameAnalysis(BaseModel):
         return self.white if color is Color.WHITE else self.black
 
 
+Grade = Literal["A", "B", "C", "D", "F"]
+
+
+class KeyMoment(BaseModel):
+    """A turning point the judge picked out."""
+
+    ply: int = Field(description="Half-move index of the move, as the tools show it")
+    title: str = Field(description="3-7 words, e.g. 'The queen walks into a fork'")
+    what_happened: str = Field(
+        description="1-3 sentences: the move, what it did, and what Stockfish preferred"
+    )
+    reasoning_check: str = Field(
+        description="1-2 sentences: did the model's own explanation match what the move did?"
+    )
+    reasoning_matched: bool = Field(description="True if the explanation fit the move")
+
+
+class PlayerVerdict(BaseModel):
+    """The judge's verdict on one player. Explanations come before the grade on purpose."""
+
+    strengths: str = Field(description="1-2 sentences")
+    weaknesses: str = Field(description="1-2 sentences")
+    reasoning_quality: str = Field(
+        description="1-2 sentences: how well its explanations described the real position"
+    )
+    grade: Grade = Field(description="Overall grade from the rubric")
+
+
+class JudgeReport(BaseModel):
+    """The post-game report, submitted by the judge agent as its last step."""
+
+    headline: str = Field(description="One line, like a newspaper headline about the game")
+    summary: str = Field(description="3-5 sentences: the story of the game for spectators")
+    key_moments: list[KeyMoment] = Field(min_length=1, max_length=5)
+    white: PlayerVerdict
+    black: PlayerVerdict
+
+
+class JudgeStep(BaseModel):
+    """One visible step of the judge agent: a thought, or a tool call with its purpose."""
+
+    kind: Literal["thinking", "tool"]
+    text: str  # the model's thinking, or the purpose it gave for the tool call
+    tool: str | None = None
+    title: str | None = None  # e.g. "Move 7... Qe4+"
+
+
+class JudgeResult(BaseModel):
+    model: str
+    steps: list[JudgeStep] = Field(default_factory=list)
+    report: JudgeReport | None = None
+    error: str | None = None  # the judge failed; the game result is unaffected
+    cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    seconds: float = 0.0
+
+
 class PlayerStats(BaseModel):
     model: str
     moves: int
@@ -137,6 +196,7 @@ class GameRecord(BaseModel):
     failed_attempts: list[Attempt] = Field(default_factory=list)
     failed_color: Color | None = None
     analysis: GameAnalysis | None = None  # Stockfish analysis, added after the game
+    judge: JudgeResult | None = None  # the judge agent's report, added after the analysis
     pgn: str = ""
 
     def model_for(self, color: Color) -> str:

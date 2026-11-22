@@ -15,13 +15,19 @@ class GameStatus(StrEnum):
     QUEUED = "queued"  # waiting for a free slot
     RUNNING = "running"
     ANALYZING = "analyzing"  # game over, Stockfish is reviewing it
+    JUDGING = "judging"  # the judge agent is writing its report
     FINISHED = "finished"  # done, whatever the result (including forfeits and API errors)
     ERROR = "error"  # crashed: a bug, not a chess result
     INTERRUPTED = "interrupted"  # the server stopped while it was running
 
     @property
     def is_active(self) -> bool:
-        return self in (GameStatus.QUEUED, GameStatus.RUNNING, GameStatus.ANALYZING)
+        return self in (
+            GameStatus.QUEUED,
+            GameStatus.RUNNING,
+            GameStatus.ANALYZING,
+            GameStatus.JUDGING,
+        )
 
 
 class GameSummary(BaseModel):

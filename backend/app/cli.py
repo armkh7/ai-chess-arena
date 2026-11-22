@@ -16,10 +16,19 @@ from app.analysis.analyzer import analyze_record
 from app.analysis.engine import EngineNotFound, Stockfish
 from app.analysis.metrics import format_eval
 from app.config import Settings, get_settings
-from app.game.models import Attempt, Color, GameRecord, MoveLabel, MoveRecord, Termination
+from app.game.models import (
+    Attempt,
+    Color,
+    GameRecord,
+    JudgeStep,
+    MoveLabel,
+    MoveRecord,
+    Termination,
+)
 from app.game.players import LLMPlayer
 from app.game.prompt import board_diagram
 from app.game.runner import GameRunner
+from app.judge.agent import LangChainJudge
 from app.llm.openrouter import LLMError, OpenRouterClient, fetch_models
 
 
@@ -281,6 +290,55 @@ def analyze(
     if record.analysis:
         json_path, pgn_path = save_game(record, game.parent)
         console.print(f"Updated: {json_path}  and  {pgn_path}")
+
+
+@app.command()
+def judge(
+    game: Path = typer.Argument(
+        ..., help="A saved, analyzed game, e.g. games/<id>.json", exists=True
+    ),
+    model: str | None = typer.Option(None, "--model", help="Judge model (default: JUDGE_MODEL)."),
+) -> None:
+    """Let the judge agent review a saved game; shows each step, then saves the report."""
+    settings = get_settings()
+    record = GameRecord.model_validate_json(game.read_text(encoding="utf-8"))
+    if not record.analysis:
+        console.print(f"Analyze it first: uv run arena analyze {game}", style="yellow")
+        raise typer.Exit(1)
+    if model:
+        settings = settings.model_copy(update={"judge_model": model})
+    judge_agent = LangChainJudge.from_settings(settings)
+    console.rule(f"[bold]Judge agent[/] ({escape(settings.judge_model)})")
+
+    def on_step(step: JudgeStep) -> None:
+        if step.kind == "thinking":
+            console.print(f"[dim italic]{escape(step.text)}[/]", highlight=False)
+        else:
+            console.print(
+                f"[cyan]→ {escape(step.title or '')}[/]  {escape(step.text)}", highlight=False
+            )
+
+    result = asyncio.run(judge_agent.judge(record, on_step))
+    record.judge = result
+    console.print(
+        f"[dim]{len(result.steps)} steps, {result.seconds:.0f} s, "
+        f"{result.input_tokens:,} + {result.output_tokens:,} tokens, ${result.cost_usd:.4f}[/]"
+    )
+    if result.error or not result.report:
+        console.print(f"Judge failed: {result.error}", style="red", markup=False)
+        raise typer.Exit(1)
+    report = result.report
+    console.rule(f"[bold]{escape(report.headline)}[/]")
+    console.print(report.summary, markup=False)
+    for moment in report.key_moments:
+        mark = "[green]✓[/]" if moment.reasoning_matched else "[red]✗[/]"
+        console.print(f"\n[bold]{escape(moment.title)}[/] (ply {moment.ply})")
+        console.print(f"  {escape(moment.what_happened)}", highlight=False)
+        console.print(f"  {mark} {escape(moment.reasoning_check)}", highlight=False)
+    for color, verdict in (("White", report.white), ("Black", report.black)):
+        console.print(f"\n[bold]{color}: {verdict.grade}[/]  {escape(verdict.reasoning_quality)}")
+    json_path, _ = save_game(record, game.parent)
+    console.print(f"\nUpdated: {json_path}")
 
 
 def _read_models(models: list[str] | None, models_file: Path | None) -> list[str]:

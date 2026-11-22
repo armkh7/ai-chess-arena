@@ -222,9 +222,15 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# The Python `lib/` rule above would also hide the frontend's source folder
+!frontend/src/lib/
+
 # Games and benchmark runs saved by the CLI
 backend/games/
 backend/benchmarks/
 
 # Personal development tracker (not part of the public repo)
 PROGRESS.md
+
+# Claude app settings (e.g. how its browser pane starts the dev server)
+.claude/

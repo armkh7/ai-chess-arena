@@ -17,6 +17,7 @@ class GameRequest(BaseModel):
         None, ge=5, le=300, description="Seconds per reply (default from settings)"
     )
     analysis: bool = True
+    judge: bool = Field(True, description="Have the judge agent review the game (needs analysis)")
 
 
 class ModelOut(BaseModel):
