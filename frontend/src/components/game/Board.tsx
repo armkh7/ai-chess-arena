@@ -9,15 +9,20 @@ const LIGHT = "#ebe6d2";
 const DARK = "#5e7d63";
 const LAST_MOVE: CSSProperties = { backgroundColor: "rgba(250, 204, 21, 0.45)" };
 
-/** A read-only board: the position, with the last move's squares highlighted. */
+/**
+ * A read-only board: the position, with the last move's squares highlighted. `animate` slides
+ * the pieces; GameView turns it off for jumps, which would otherwise flash through moves.
+ */
 export function Board({
   fen,
   lastMove,
   orientation,
+  animate,
 }: {
   fen: string;
   lastMove?: string;
   orientation: Color;
+  animate: boolean;
 }) {
   const squareStyles: Record<string, CSSProperties> = {};
   if (lastMove) {
@@ -31,7 +36,7 @@ export function Board({
         position: fen,
         boardOrientation: orientation,
         allowDragging: false,
-        animationDurationInMs: 200,
+        animationDurationInMs: animate ? 200 : 0,
         squareStyles,
         darkSquareStyle: { backgroundColor: DARK },
         lightSquareStyle: { backgroundColor: LIGHT },

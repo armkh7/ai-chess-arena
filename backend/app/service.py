@@ -50,12 +50,16 @@ class NewGame(BaseModel):
 
 
 def _end_event(record: GameRecord, status: GameStatus, error: str | None) -> dict[str, Any]:
+    """The last event. It also carries the final turn's failed tries (a forfeit or API error),
+    so the game page needs nothing but the stream."""
     return {
         "status": status.value,
         "result": record.result,
         "termination": record.termination.value if record.termination else None,
         "winner": record.winner.value if record.winner else None,
         "error": error or record.error,
+        "failed_color": record.failed_color.value if record.failed_color else None,
+        "failed_attempts": [a.model_dump(mode="json") for a in record.failed_attempts],
     }
 
 

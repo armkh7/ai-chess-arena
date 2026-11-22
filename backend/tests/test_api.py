@@ -152,16 +152,43 @@ async def test_stream_replays_a_finished_game(api):
     resp = await api.get(f"/games/{game_id}/stream")
     assert resp.headers["content-type"].startswith("text/event-stream")
     events = parse_sse(resp.text)
-    assert [t for t, _ in events] == ["game", "move", "move", "move", "move", "analysis", "end"]
+    assert [t for t, _ in events] == [
+        "game",
+        "move",
+        "move",
+        "move",
+        "move",
+        "analysis",
+        "end",
+        "synced",
+    ]
     assert events[0][1]["white_model"] == "w/free:free"
     assert events[4][1]["reasoning"] == "Mate."
-    assert events[-1][1] == {
+    assert dict(events)["end"] == {
         "status": "finished",
         "result": "0-1",
         "termination": "checkmate",
         "winner": "black",
         "error": None,
+        "failed_color": None,
+        "failed_attempts": [],
     }
+
+
+async def test_end_event_carries_a_forfeits_last_tries(api):
+    """The game page shows them without fetching the whole game again."""
+    api.service._make_player = lambda model, effort, cb: ScriptedPlayer(
+        model, [reply("Ke2"), reply("Ke2"), reply("Ke2"), reply("Ke2")]
+    )
+    game_id = await start(api)
+    await api.service.wait_all()
+
+    events = parse_sse((await api.get(f"/games/{game_id}/stream")).text)
+    end = dict(events)["end"]
+    assert end["termination"] == "forfeit_illegal_moves"
+    assert end["failed_color"] == "white"
+    assert len(end["failed_attempts"]) == 4
+    assert all("cost_usd" not in a for a in end["failed_attempts"])  # costs stay private
 
 
 async def test_unknown_model_is_rejected(api):

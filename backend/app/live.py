@@ -17,6 +17,9 @@ class Event:
 
 
 PING = Event("ping", {})  # sent when nothing happened for a while, keeps the connection open
+# Sent once after the history: everything before it already happened. The page applies the
+# history in one update, so it shows the current position instead of racing through moves.
+SYNCED = Event("synced", {})
 
 
 @dataclass
@@ -37,7 +40,7 @@ class GameChannel:
             queue.put_nowait(None)
 
     async def subscribe(self, ping_after: float = 15.0) -> AsyncIterator[Event]:
-        """Every event so far, then new ones until the game ends. `PING` while idle."""
+        """Every event so far, `SYNCED`, then new ones until the game ends. `PING` while idle."""
         queue: asyncio.Queue[Event | None] = asyncio.Queue()
         # Copy the history and subscribe in one step (no `await` between them), so no event
         # can slip in between and be missed or sent twice.
@@ -48,6 +51,7 @@ class GameChannel:
         try:
             for event in backlog:
                 yield event
+            yield SYNCED
             if closed:
                 return
             while True:

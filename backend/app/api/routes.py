@@ -23,7 +23,7 @@ from app.config import Settings
 from app.costs import strip_costs
 from app.leaderboard import LeaderboardRow, build_leaderboard
 from app.limits import minutes_text, seconds_until_tomorrow, start_of_day
-from app.live import Event
+from app.live import SYNCED, Event
 from app.llm.openrouter import ModelInfo
 from app.public_models import PublicModels
 from app.service import GameService, NewGame, replay_events
@@ -198,6 +198,7 @@ async def stream_game(game_id: str, request: Request) -> StreamingResponse:
         async def replay() -> AsyncIterator[Event]:
             for event in saved:
                 yield event
+            yield SYNCED  # same shape as a live stream: history, then the marker
 
         events = replay()
 

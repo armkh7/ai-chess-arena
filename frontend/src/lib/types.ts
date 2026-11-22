@@ -192,6 +192,9 @@ export interface GameEnd {
   termination: string | null;
   winner: Color | null;
   error: string | null;
+  // The final turn's failed tries (a forfeit or API error), so the page needs only the stream.
+  failed_color: Color | null;
+  failed_attempts: Attempt[];
 }
 
 /** Sent with the "analyzing" / "judging" status: the game is over, the review isn't. */

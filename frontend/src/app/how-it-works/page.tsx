@@ -130,16 +130,19 @@ export default function HowItWorksPage() {
 
       <section className="space-y-5">
         <SectionTitle>From your click to the final report</SectionTitle>
-        <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* A numbered timeline. Each number shares a row with its title (both 28 px tall, so
+            they line up); the rail is a line behind the numbers. */}
+        <ol className="relative space-y-6">
+          <span aria-hidden className="absolute top-3.5 bottom-3.5 left-3.5 w-px bg-ui-800" />
           {PIPELINE.map((step, i) => (
-            <li key={step.title} className="rounded-xl border border-ui-800 bg-ui-900/40 p-4">
-              <p className="flex items-center gap-3 font-medium">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-400/15 text-sm font-semibold text-accent-300">
-                  {i + 1}
-                </span>
-                {step.title}
+            <li key={step.title} className="relative grid grid-cols-[1.75rem_1fr] gap-x-4">
+              <span className="grid size-7 place-items-center rounded-full border border-accent-400/40 bg-ui-950 text-sm font-semibold text-accent-300">
+                {i + 1}
+              </span>
+              <p className="font-medium leading-7">{step.title}</p>
+              <p className="col-start-2 mt-1 max-w-2xl text-sm leading-relaxed text-ui-400">
+                {step.text}
               </p>
-              <p className="mt-2 text-sm leading-relaxed text-ui-400">{step.text}</p>
             </li>
           ))}
         </ol>
@@ -192,14 +195,15 @@ export default function HowItWorksPage() {
 
       <section className="space-y-5">
         <SectionTitle>Engineering notes</SectionTitle>
-        <div className="grid gap-3 sm:grid-cols-2">
+        {/* A plain list: the note's title, then its explanation, one per row */}
+        <dl className="divide-y divide-ui-800 border-y border-ui-800">
           {NOTES.map((note) => (
-            <div key={note.title} className="rounded-xl border border-ui-800 bg-ui-900/40 p-4">
-              <p className="font-medium">{note.title}</p>
-              <p className="mt-1.5 text-sm leading-relaxed text-ui-400">{note.text}</p>
+            <div key={note.title} className="grid gap-1 py-4 sm:grid-cols-[13rem_1fr] sm:gap-6">
+              <dt className="font-medium">{note.title}</dt>
+              <dd className="text-sm leading-relaxed text-ui-400">{note.text}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       </section>
 
       <section className="flex flex-wrap items-center gap-4 border-t border-ui-800 pt-8">

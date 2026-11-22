@@ -18,9 +18,8 @@ import { JudgePanel } from "@/components/game/JudgePanel";
 import { MoveDetails, RejectedTries, Thinking } from "@/components/game/MoveDetails";
 import { MoveList } from "@/components/game/MoveList";
 import { PlayerStrip } from "@/components/game/PlayerStrip";
-import { api } from "@/lib/api";
 import { colorName, endingText, resultText, STATUS_TEXT } from "@/lib/format";
-import type { Color, GameDetail, MoveAnalysis } from "@/lib/types";
+import type { Color, MoveAnalysis } from "@/lib/types";
 import { useGameStream } from "@/lib/useGameStream";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -30,7 +29,6 @@ export function GameView({ id }: { id: string }) {
   const game = useGameStream(id);
   const [selected, setSelected] = useState<number | null>(null); // null = follow the latest move
   const [flipped, setFlipped] = useState(false);
-  const [detail, setDetail] = useState<GameDetail | null>(null);
 
   const total = game.moves.length;
   // While the game is on, the board always shows the latest move; replay controls come after.
@@ -38,18 +36,11 @@ export function GameView({ id }: { id: string }) {
   const ply = selected === null || live ? total : Math.min(selected, total);
   const now = useNow(live ? 1000 : null);
 
-  // Once the game is over, load the full record: PGN and the last turn's failed tries.
-  useEffect(() => {
-    if (!game.end) return;
-    let cancelled = false;
-    api
-      .game(id)
-      .then((d) => !cancelled && setDetail(d))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [game.end, id]);
+  // Slide the pieces only for one-move steps (a live move, ← / →, Play). Opening a game and
+  // jumps (⏮ ⏭, clicking a far move) show the new position at once.
+  const [shown, setShown] = useState({ ply, animate: false });
+  if (shown.ply !== ply) setShown({ ply, animate: Math.abs(ply - shown.ply) === 1 });
+  const animate = shown.ply === ply ? shown.animate : Math.abs(ply - shown.ply) === 1;
 
   const go = useCallback(
     (target: number) => setSelected(target >= total ? null : Math.max(0, target)),
@@ -141,7 +132,7 @@ export function GameView({ id }: { id: string }) {
   const result = outcome?.result ?? null;
   const reviewing = game.status === "analyzing" || game.status === "judging";
   const showJudge = game.status === "judging" || game.judge !== null || game.judgeSteps.length > 0;
-  const failed = detail?.game.failed_attempts.length ? detail.game : null;
+  const failed = game.end?.failed_attempts.length ? game.end : null; // a forfeit's last tries
 
   const strip = (color: Color) => (
     <PlayerStrip
@@ -167,7 +158,7 @@ export function GameView({ id }: { id: string }) {
           <div className="flex gap-2">
             <EvalBar cp={evaluation} orientation={orientation} />
             <div className="min-w-0 flex-1">
-              <Board fen={fen} lastMove={move?.uci} orientation={orientation} />
+              <Board fen={fen} lastMove={move?.uci} orientation={orientation} animate={animate} />
             </div>
           </div>
           {strip(bottom)}

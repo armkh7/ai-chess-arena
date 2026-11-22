@@ -50,7 +50,7 @@ export function JudgePanel(props: {
   const report = judge?.report;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-agent-400/25 bg-gradient-to-b from-agent-500/[0.07] to-transparent">
+    <section className="overflow-hidden rounded-2xl border border-agent-400/25 bg-ui-900/40">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-agent-400/15 px-4 py-3 sm:px-5">
         <Scale className="size-5 text-agent-300" aria-hidden />
         <h2 className="font-semibold">Judge agent</h2>
@@ -95,7 +95,9 @@ function Trace({ steps, judging }: { steps: JudgeStep[]; judging: boolean }) {
   const [open, setOpen] = useState(false);
   const folded = !judging && !open && steps.length > 0;
   return (
-    <div className="p-4 sm:p-5">
+    // Its own tint down the full height: in the two-column layout the report is usually
+    // taller, and a fading panel background made the column look cut off.
+    <div className="bg-agent-500/[0.06] p-4 sm:p-5">
       <p className="mb-3 text-xs font-medium uppercase tracking-wide text-ui-400">Agent trace</p>
       {folded && (
         <button
