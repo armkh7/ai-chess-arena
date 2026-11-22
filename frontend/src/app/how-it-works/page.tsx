@@ -65,7 +65,7 @@ const STACK = [
     group: "AI and chess",
     items: [
       "OpenRouter (the player models)",
-      "LangChain v1 agents",
+      "LangChain v1",
       "Claude Haiku 5.5 (the judge)",
       "Stockfish 17",
       "python-chess",
