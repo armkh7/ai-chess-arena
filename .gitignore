@@ -222,8 +222,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Games saved by the CLI
+# Games and benchmark runs saved by the CLI
 backend/games/
+backend/benchmarks/
 
 # Personal development tracker (not part of the public repo)
 PROGRESS.md

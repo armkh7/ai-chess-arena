@@ -1,6 +1,8 @@
 """Command line: `uv run arena models` and `uv run arena play WHITE BLACK`."""
 
 import asyncio
+import json
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
@@ -279,6 +281,154 @@ def analyze(
     if record.analysis:
         json_path, pgn_path = save_game(record, game.parent)
         console.print(f"Updated: {json_path}  and  {pgn_path}")
+
+
+def _read_models(models: list[str] | None, models_file: Path | None) -> list[str]:
+    names = list(models or [])
+    if models_file:
+        for line in models_file.read_text(encoding="utf-8").splitlines():
+            if name := line.split("#", 1)[0].strip():
+                names.append(name)
+    return list(dict.fromkeys(names))  # drop duplicates, keep order
+
+
+# Rough tokens per reply for the cost estimate: the prompt (board, history, legal moves)
+# and the answer including some hidden thinking at low effort.
+EST_PROMPT_TOKENS = 1_200
+EST_COMPLETION_TOKENS = 800
+
+
+@app.command()
+def benchmark(
+    models: list[str] | None = typer.Argument(None, help="Model ids to compare."),
+    models_file: Path | None = typer.Option(
+        None, "--models-file", exists=True, help="File with one model id per line (# comments)."
+    ),
+    games_per_pair: int = typer.Option(
+        1, "--games-per-pair", min=1, help="Games each pair plays (2 = once with each color)."
+    ),
+    max_moves: int = typer.Option(20, "--max-moves", min=1, help="Moves per side per game."),
+    concurrency: int = typer.Option(2, "--concurrency", min=1, help="Games played at once."),
+    effort: Effort = typer.Option(Effort.LOW, "--effort", help="Reasoning effort for all models."),
+    move_time: float | None = typer.Option(
+        None, "--move-time", help="Seconds per reply (default from settings)."
+    ),
+    out: Path = typer.Option(Path("benchmarks"), "--out", help="Folder for the results."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Start without asking."),
+) -> None:
+    """Round-robin tournament: rank models by reliability, speed, strength and cost."""
+    from app.analysis.engine import find_stockfish
+    from app.benchmark import HEADERS, pairings, run_games, summarize, table_rows, to_markdown
+
+    settings = get_settings()
+    names = _read_models(models, models_file)
+    if len(names) < 2:
+        console.print("Give at least two models.", style="red")
+        raise typer.Exit(1)
+
+    catalog = {m.id: m for m in asyncio.run(fetch_models(settings.openrouter_base_url))}
+    if unknown := [n for n in names if n not in catalog]:
+        console.print(f"Unknown model(s): {', '.join(unknown)}", style="red", markup=False)
+        raise typer.Exit(1)
+
+    games = pairings(names, games_per_pair)
+    per_model = len(games) * 2 // len(names)  # games each model plays
+    cost = sum(
+        per_model
+        * max_moves
+        * (
+            EST_PROMPT_TOKENS * catalog[n].prompt_price
+            + EST_COMPLETION_TOKENS * catalog[n].completion_price
+        )
+        for n in names
+    )
+    limit = settings.move_time_limit_seconds if move_time is None else move_time
+    console.rule("[bold]Benchmark plan[/]")
+    console.print(
+        f"{len(names)} models, {len(games)} games ({per_model} per model), up to {max_moves} "
+        f"moves per side, {concurrency} at a time, {effort.value} effort, {limit:g}s per reply.",
+        highlight=False,
+    )
+    console.print(
+        f"At most ~{len(games) * 2 * max_moves:,} OpenRouter requests, "
+        f"rough cost ${cost:.2f} (free models cost $0).",
+        highlight=False,
+    )
+    if find_stockfish(settings.stockfish_path) is None:
+        console.print("Stockfish not found: accuracy will be missing.", style="yellow")
+    if not yes and not typer.confirm("Start?"):
+        raise typer.Exit()
+
+    try:
+        client = OpenRouterClient.from_settings(settings)
+    except LLMError as exc:
+        console.print(str(exc), style="red", markup=False)
+        raise typer.Exit(1) from exc
+    folder = out / datetime.now().strftime("%Y%m%d-%H%M")
+    done = 0
+
+    async def play(white: str, black: str) -> GameRecord:
+        runner = GameRunner(
+            LLMPlayer(client, white, reasoning_effort=effort.value),
+            LLMPlayer(client, black, reasoning_effort=effort.value),
+            max_full_moves=max_moves,
+            max_illegal_retries=settings.max_illegal_retries,
+            move_time_limit=limit,
+        )
+        record = await runner.play()
+        record.reasoning_effort = effort.value
+        if record.moves:
+            try:
+                async with Stockfish.from_settings(settings) as engine:
+                    await analyze_record(record, engine, settings.adjudicate_min_cp)
+            except EngineNotFound:
+                pass
+        save_game(record, folder / "games")
+        return record
+
+    def on_done(record: GameRecord) -> None:
+        nonlocal done
+        done += 1
+        ending = record.termination.value.replace("_", " ") if record.termination else "crash"
+        seconds = (
+            (record.finished_at - record.started_at).total_seconds() if record.finished_at else 0
+        )
+        console.print(
+            f"[{done}/{len(games)}] {record.white_model} vs {record.black_model}: "
+            f"{record.result} ({ending}, {len(record.moves)} plies, {seconds / 60:.1f} min)",
+            highlight=False,
+            markup=False,
+        )
+
+    async def run_all() -> list[GameRecord]:
+        try:
+            return await run_games(games, play, concurrency=concurrency, on_done=on_done)
+        finally:
+            await client.aclose()
+
+    results = summarize(asyncio.run(run_all()))
+
+    table = Table(title="Benchmark results")
+    for header in HEADERS:
+        table.add_column(header, justify="left" if header in ("Model", "Failures") else "right")
+    for row in table_rows(results):
+        table.add_row(*row)
+    console.print(table)
+
+    notes = [
+        f"- Date: {datetime.now():%Y-%m-%d %H:%M}",
+        f"- {len(games)} games, up to {max_moves} moves per side, {effort.value} effort, "
+        f"{limit:g}s per reply",
+        "- Finish = games without forfeit, timeout or API error. Score = win 1, draw 0.5.",
+    ]
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "results.md").write_text(
+        to_markdown(results, "Model benchmark", notes), encoding="utf-8"
+    )
+    (folder / "results.json").write_text(
+        json.dumps([r.as_dict() for r in results], indent=2), encoding="utf-8"
+    )
+    console.print(f"Saved: {folder}/results.md, results.json and games/", highlight=False)
 
 
 if __name__ == "__main__":
