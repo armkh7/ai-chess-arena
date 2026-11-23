@@ -147,6 +147,43 @@ async def test_agent_without_a_report_is_an_error_not_a_crash():
     assert result.steps[0].text == "I think White lost."
 
 
+INVALID_REPORT = {k: v for k, v in REPORT.items() if k != "black"}  # a required field missing
+
+
+async def test_a_rejected_report_goes_back_to_the_judge_to_fix():
+    # Regression: submit_report used to be return_direct, and LangChain ends the run after a
+    # return_direct tool even when it fails, so one invalid report meant no report at all.
+    record = await fools_mate()
+    model = ScriptedChatModel(
+        messages=iter(
+            [
+                AIMessage(content="", tool_calls=[call("submit_report", INVALID_REPORT, "1")]),
+                AIMessage(content="", tool_calls=[call("submit_report", REPORT, "2")]),
+            ]
+        )
+    )
+    result = await LangChainJudge(model, "fake/judge").judge(record)
+    assert result.error is None
+    assert result.report.black.grade == "A"
+    assert [s.tool for s in result.steps] == ["submit_report", "submit_report"]
+
+
+async def test_a_report_never_fixed_says_why_it_was_rejected():
+    record = await fools_mate()
+    model = ScriptedChatModel(
+        messages=iter(
+            [
+                AIMessage(content="", tool_calls=[call("submit_report", INVALID_REPORT, "1")]),
+                AIMessage(content="I can't fix it."),
+            ]
+        )
+    )
+    result = await LangChainJudge(model, "fake/judge").judge(record)
+    assert result.report is None
+    assert result.error.startswith("The judge's report was rejected:")
+    assert "black" in result.error  # the validation message names the missing field
+
+
 class ScriptedJudge:
     async def judge(self, record, on_step=None):
         steps = [

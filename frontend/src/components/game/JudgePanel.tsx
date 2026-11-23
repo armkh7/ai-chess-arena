@@ -75,7 +75,13 @@ export function JudgePanel(props: {
           {report ? (
             <Report report={report} models={models} onShowMove={onShowMove} />
           ) : judge?.error ? (
-            <p className="text-sm text-red-400">The judge couldn&apos;t finish: {judge.error}</p>
+            // Visitors get a plain message; the technical reason stays in the game's data
+            // (`judge.error`) for the site owner.
+            <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center text-sm text-ui-400">
+              <Scale className="size-7 text-ui-500" aria-hidden />
+              <p className="font-medium text-ui-300">The judge couldn&apos;t review this game.</p>
+              <p>The moves, the explanations and Stockfish&apos;s analysis are all still here.</p>
+            </div>
           ) : (
             <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center text-sm text-ui-400">
               <Scale className="size-7 text-agent-400/70" aria-hidden />

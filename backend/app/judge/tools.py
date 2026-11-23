@@ -195,9 +195,13 @@ def make_tools(record: GameRecord) -> list[BaseTool]:
             lines.append(f"ply {ply}: {notation(move)}{label}: {reason}")
         return "\n".join(lines)
 
-    @tool(SUBMIT_REPORT, args_schema=JudgeReport, return_direct=True)
+    # Not `return_direct`: LangChain ends the run after a return_direct tool even when it
+    # failed, so a report rejected by validation ended the judge with no report. Now the model
+    # sees the error and can fix it; the agent loop stops once a report is accepted.
+    @tool(SUBMIT_REPORT, args_schema=JudgeReport)
     def submit_report(**report) -> str:
-        """Submit the final post-game report. Call this exactly once, as your last step."""
+        """Submit the final post-game report as your last step. If it's rejected, fix what the
+        error says and submit it again."""
         return JudgeReport.model_validate(report).model_dump_json()
 
     return [

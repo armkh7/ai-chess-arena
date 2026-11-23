@@ -8,7 +8,8 @@ the agent working.
 
 The report is submitted through a final `submit_report` tool rather than LangChain's
 `ToolStrategy`: that one forces a tool call on every turn, and providers switch thinking off
-when a tool call is forced.
+when a tool call is forced. A report that fails validation goes back to the model as a tool
+error so it can fix it; the loop below stops as soon as a report is accepted.
 """
 
 import asyncio
@@ -109,6 +110,7 @@ class LangChainJudge:
                 on_step(step)
 
         started = time.monotonic()
+        rejection: str | None = None  # why the last submitted report was rejected, if it was
         try:
             async with asyncio.timeout(self.timeout):
                 stream = agent.astream(
@@ -137,14 +139,24 @@ class LangChainJudge:
                                         title=step_title(view, call["name"], args),
                                     )
                                 )
-                        elif (
-                            isinstance(message, ToolMessage)
-                            and message.name == SUBMIT_REPORT
-                            and message.status != "error"
-                        ):
-                            result.report = JudgeReport.model_validate_json(str(message.content))
+                        elif isinstance(message, ToolMessage) and message.name == SUBMIT_REPORT:
+                            if message.status == "error":
+                                rejection = _rejection_reason(str(message.content))
+                            else:
+                                result.report = JudgeReport.model_validate_json(
+                                    str(message.content)
+                                )
+                    # Stop right here: asking the stream for more would start another model
+                    # call after the report was already accepted.
+                    if result.report is not None:
+                        break
+                await stream.aclose()
             if result.report is None:
-                result.error = "The judge finished without submitting a report."
+                result.error = (
+                    f"The judge's report was rejected: {rejection[:300]}"
+                    if rejection
+                    else "The judge finished without submitting a report."
+                )
         except TimeoutError:
             result.error = f"The judge took longer than {self.timeout:.0f} s and was stopped."
         except Exception as exc:  # the game is already finished: keep it, note the failure
@@ -162,6 +174,15 @@ def make_model(model: str, api_key: str, effort: ReasoningEffort | None) -> Base
         app_title="AI Chess Arena",
         max_retries=2,
     )
+
+
+def _rejection_reason(content: str) -> str:
+    """The validation errors from LangChain's tool error message, without the echo of the
+    whole submitted report that comes first ("... with error:\\n black: Field required\\n
+    Please fix the error and try again.")."""
+    reason = content.split("with error:", 1)[-1]
+    reason = reason.split("Please fix", 1)[0]
+    return " ".join(reason.split())
 
 
 def _messages(update: dict[str, Any]) -> list[Any]:
