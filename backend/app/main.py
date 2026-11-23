@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.analysis.engine import Stockfish
 from app.api.routes import ModelCatalog, ModelSource, router
 from app.config import ReasoningEffort, Settings, get_settings
+from app.credits import CreditGuard, CreditSource, fetch_credits_left
 from app.game.players import LLMPlayer
 from app.judge.agent import LangChainJudge
 from app.limits import RateLimiter
@@ -29,12 +30,17 @@ def create_app(
     make_evaluator: EvaluatorFactory | None = None,
     model_source: ModelSource | None = None,
     make_judge: JudgeFactory | None = None,
+    credit_source: CreditSource | None = None,
 ) -> FastAPI:
-    """Build the app. Tests swap in scripted players, a fake engine, a fixed model list and a
-    scripted judge."""
+    """Build the app. Tests swap in scripted players, a fake engine, a fixed model list, a
+    scripted judge and a fixed credit balance."""
     settings = settings or get_settings()
     if make_judge is None and settings.judge_enabled and settings.openrouter_api_key:
         make_judge = lambda: LangChainJudge.from_settings(settings)  # noqa: E731
+    if credit_source is None and settings.openrouter_api_key:
+        credit_source = lambda: fetch_credits_left(  # noqa: E731
+            settings.openrouter_api_key, settings.openrouter_base_url
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -63,6 +69,9 @@ def create_app(
 
         app.state.settings = settings
         app.state.visitor_limiter = RateLimiter(settings.games_per_visitor_per_hour, window=3600)
+        app.state.credits = CreditGuard(
+            credit_source, settings.min_credits_usd, paused_by_hand=settings.games_paused
+        )
         app.state.public_models = load_public_models(settings.public_models_file)
         app.state.catalog = ModelCatalog(
             model_source or (lambda: fetch_models(settings.openrouter_base_url))
@@ -73,6 +82,7 @@ def create_app(
             player_factory,
             make_evaluator or (lambda: Stockfish.from_settings(settings)),
             make_judge,
+            credits=app.state.credits,
         )
         try:
             yield

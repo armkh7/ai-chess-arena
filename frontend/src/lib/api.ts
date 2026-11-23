@@ -1,6 +1,7 @@
 // Calls to the FastAPI backend, straight from the browser.
 
 import type {
+  ArenaStatus,
   GameCreated,
   GameDetail,
   GamePage,
@@ -46,4 +47,5 @@ export const api = {
     }),
   streamUrl: (id: string) => `${API_URL}/games/${encodeURIComponent(id)}/stream`,
   leaderboard: () => request<LeaderboardRow[]>("/leaderboard"),
+  status: () => request<ArenaStatus>("/status"),
 };

@@ -18,7 +18,8 @@ from app.analysis.analyzer import analyze_record
 from app.analysis.engine import EngineNotFound, Evaluator
 from app.config import ReasoningEffort, Settings
 from app.costs import append_cost, log_path
-from app.game.models import Attempt, Color, GameRecord, JudgeStep, MoveRecord
+from app.credits import CreditGuard
+from app.game.models import Attempt, Color, GameRecord, JudgeStep, MoveRecord, Termination
 from app.game.players import Player
 from app.game.runner import GameRunner
 from app.judge.agent import Judge
@@ -98,12 +99,15 @@ class GameService:
         make_player: PlayerFactory,
         make_evaluator: EvaluatorFactory | None,
         make_judge: JudgeFactory | None = None,
+        *,
+        credits: CreditGuard | None = None,
     ) -> None:
         self.store = store
         self.settings = settings
         self._make_player = make_player
         self._make_evaluator = make_evaluator
         self._make_judge = make_judge
+        self._credits = credits
         self._slots = asyncio.Semaphore(settings.max_concurrent_games)
         self._tasks: set[asyncio.Task[None]] = set()
         self.live: dict[str, GameChannel] = {}
@@ -181,6 +185,11 @@ class GameService:
             await asyncio.shield(self.store.save(record, status, error))
             if status is GameStatus.FINISHED and record.moves:
                 await self._log_cost(record)
+            provider_failed = record.termination is Termination.API_ERROR or (
+                record.judge is not None and record.judge.error is not None
+            )
+            if provider_failed and self._credits:
+                self._credits.expire()  # maybe out of credit: check before the next game
             channel.publish("end", _end_event(record, status, error))
             channel.close()
             self.live.pop(record.id, None)

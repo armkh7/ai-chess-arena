@@ -1,6 +1,7 @@
 "use client";
 
-import { Shuffle } from "lucide-react";
+import { ArrowRight, CirclePause, Shuffle } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { ModelName } from "@/components/ModelName";
@@ -19,13 +20,15 @@ export function NewGameForm() {
   // back, because Next keeps a page's state while you're on another page.
   const [starting, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // New games pause when the arena's AI credit runs low (the server decides; no amounts here).
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .models()
-      .then((list) => {
+    Promise.all([api.models(), api.status().catch(() => ({ games_paused: false }))])
+      .then(([list, status]) => {
         if (cancelled) return;
+        setPaused(status.games_paused);
         setModels(list);
         setWhite(list[0]?.id ?? "");
         setBlack(list[1]?.id ?? list[0]?.id ?? "");
@@ -62,6 +65,9 @@ export function NewGameForm() {
   }
   if (!models) {
     return <Notice>Loading models…</Notice>;
+  }
+  if (paused) {
+    return <Paused />;
   }
 
   return (
@@ -195,6 +201,28 @@ function ModelColumn(props: {
         );
       })}
     </fieldset>
+  );
+}
+
+function Paused() {
+  return (
+    <section className="flex flex-col items-start gap-4 rounded-2xl border border-ui-800 bg-ui-900/40 p-6 sm:flex-row sm:items-center sm:gap-5">
+      <CirclePause className="size-9 shrink-0 text-ui-500" aria-hidden />
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold">New games are paused for now</h2>
+        <p className="leading-relaxed text-ui-400">
+          You can still replay every past game, read the judge agent&apos;s reports and check the
+          leaderboard.
+        </p>
+      </div>
+      <Link
+        href="/games"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ui-700 px-4 py-2 text-sm text-ui-200 transition hover:border-ui-500 hover:text-ui-50 sm:ml-auto"
+      >
+        Browse games
+        <ArrowRight className="size-4" aria-hidden />
+      </Link>
+    </section>
   );
 }
 

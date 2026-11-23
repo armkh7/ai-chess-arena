@@ -7,6 +7,11 @@ export type MoveLabel = "best" | "good" | "inaccuracy" | "mistake" | "blunder";
 export type GameStatus =
   "queued" | "running" | "analyzing" | "judging" | "finished" | "error" | "interrupted";
 
+/** Whether visitors can start games (paused when the arena's AI credit runs low). */
+export interface ArenaStatus {
+  games_paused: boolean;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

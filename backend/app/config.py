@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     max_waiting_games: int = 5  # queue length; beyond this, new games are refused
     games_per_visitor_per_hour: int = 3  # per IP address
     games_per_day: int = 50  # across the whole site, resets at midnight UTC
+    # New games pause while the OpenRouter credit left (the lower of the key's limit and the
+    # account balance) is under this, so no game runs out of money halfway. 0 = no check.
+    min_credits_usd: float = 0.5
+    games_paused: bool = False  # pause new games by hand (past games stay watchable)
     # One CSV line per finished game with what it cost (relative to backend/; empty = off).
     # Visitors never see costs: the API strips them. Summary: `uv run arena costs`.
     cost_log_file: str = "logs/costs.csv"

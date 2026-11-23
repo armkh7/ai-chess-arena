@@ -20,6 +20,12 @@ class GameRequest(BaseModel):
     judge: bool = Field(True, description="Have the judge agent review the game (needs analysis)")
 
 
+class ArenaStatus(BaseModel):
+    """Whether visitors can start games. Only *that* games are paused, never the credit left."""
+
+    games_paused: bool
+
+
 class ModelOut(BaseModel):
     """A model visitors can pick. No prices: costs are for the site owner only."""
 

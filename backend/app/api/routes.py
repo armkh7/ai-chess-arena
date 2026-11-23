@@ -6,6 +6,7 @@ GET  /games                  finished and running games, newest first
 GET  /games/{id}             one game with every move, attempt and the analysis
 GET  /games/{id}/stream      live events (Server-Sent Events): the history, then each new event
 GET  /leaderboard            Elo ratings and per-model stats from finished games
+GET  /status                 whether new games are paused (low OpenRouter credit, or by hand)
 
 No response contains costs: they're for the site owner (`app.costs`).
 """
@@ -18,7 +19,14 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.api.schemas import GameCreated, GameDetail, GamePage, GameRequest, ModelOut
+from app.api.schemas import (
+    ArenaStatus,
+    GameCreated,
+    GameDetail,
+    GamePage,
+    GameRequest,
+    ModelOut,
+)
 from app.config import Settings
 from app.costs import strip_costs
 from app.leaderboard import LeaderboardRow, build_leaderboard
@@ -84,10 +92,22 @@ def _too_many(message: str, retry_after: float) -> HTTPException:
     return HTTPException(429, message, headers={"Retry-After": str(max(1, round(retry_after)))})
 
 
+PAUSED = "New games are paused for now. You can still watch every past game and the leaderboard."
+
+
+@router.get("/status", response_model=ArenaStatus)
+async def arena_status(request: Request) -> ArenaStatus:
+    return ArenaStatus(games_paused=await request.app.state.credits.paused())
+
+
 async def _check_limits(request: Request, visitor: str) -> None:
-    """Cost guards: a full queue, the daily cap, then the visitor's hourly limit."""
+    """Cost guards: paused games (low credit), a full queue, the daily cap, then the
+    visitor's hourly limit."""
     settings = _settings(request)
     service = _service(request)
+
+    if await request.app.state.credits.paused():
+        raise HTTPException(503, PAUSED)
 
     if settings.max_waiting_games and service.waiting >= settings.max_waiting_games:
         raise _too_many(
